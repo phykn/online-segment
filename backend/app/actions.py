@@ -3,11 +3,11 @@ from fastapi import HTTPException, status
 from sklearn.ensemble import RandomForestClassifier
 
 from app.data.mask import read_item
-from app.refine.model import refiner
 from app.api.schema import TrainItem
 from app.config import config
+from app.refine.model import Refiner
 from app.segment import feature, sample
-from app.segment.model import segmenter
+from app.segment.model import Segmenter
 
 
 cfg = config.model
@@ -60,7 +60,11 @@ def make_data(items: list[TrainItem]) -> tuple[np.ndarray, np.ndarray]:
     return np.concatenate(xs), np.concatenate(ys)
 
 
-def apply(items: list[TrainItem]) -> None:
+def apply(
+    items: list[TrainItem],
+    segmenter: Segmenter,
+    refiner: Refiner,
+) -> None:
     x, y = make_data(items)
     segmenter.fit(x, y)
     refiner.reset()
@@ -68,6 +72,8 @@ def apply(items: list[TrainItem]) -> None:
 
 def infer(
     image: np.ndarray,
+    segmenter: Segmenter,
+    refiner: Refiner,
     classifier: RandomForestClassifier | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     classifier = classifier or segmenter.load()
@@ -85,6 +91,8 @@ def infer(
 
 def predict(
     image: np.ndarray,
+    segmenter: Segmenter,
+    refiner: Refiner,
     classifier: RandomForestClassifier | None = None,
 ) -> np.ndarray:
-    return infer(image, classifier)[0]
+    return infer(image, segmenter, refiner, classifier)[0]

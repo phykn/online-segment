@@ -17,12 +17,13 @@ class JobStore:
         self.lock = Lock()
         self._jobs = {}
 
-    def create(self) -> str:
+    def create(self, owner: str) -> str:
         with self.lock:
             self._clean()
             job_id = uuid4().hex
             self._jobs[job_id] = {
                 "created": time(),
+                "owner": owner,
                 "status": "waiting",
                 "done": 0,
                 "total": 0,
@@ -31,31 +32,31 @@ class JobStore:
             }
         return job_id
 
-    def start(self, job_id: str, total: int) -> None:
+    def start(self, job_id: str, owner: str, total: int) -> None:
         with self.lock:
-            self._get(job_id).update(status="running", total=total, done=0)
+            self._get(job_id, owner).update(status="running", total=total, done=0)
 
-    def update(self, job_id: str, done: int) -> None:
+    def update(self, job_id: str, owner: str, done: int) -> None:
         with self.lock:
-            self._get(job_id)["done"] = done
+            self._get(job_id, owner)["done"] = done
 
-    def finish(self, job_id: str, path: str) -> None:
+    def finish(self, job_id: str, owner: str, path: str) -> None:
         with self.lock:
-            job = self._get(job_id)
+            job = self._get(job_id, owner)
             job.update(status="ready", done=job["total"], path=path)
 
-    def fail(self, job_id: str, message: str) -> None:
+    def fail(self, job_id: str, owner: str, message: str) -> None:
         with self.lock:
-            self._get(job_id).update(status="error", error=message)
+            self._get(job_id, owner).update(status="error", error=message)
 
-    def get(self, job_id: str) -> dict:
+    def get(self, job_id: str, owner: str) -> dict:
         with self.lock:
-            job = self._get(job_id)
+            job = self._get(job_id, owner)
             return {key: job[key] for key in ("status", "done", "total", "error")}
 
-    def path(self, job_id: str) -> str:
+    def path(self, job_id: str, owner: str) -> str:
         with self.lock:
-            job = self._get(job_id)
+            job = self._get(job_id, owner)
             if job["status"] != "ready" or not job["path"]:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -63,9 +64,13 @@ class JobStore:
                 )
             return job["path"]
 
-    def remove(self, job_id: str) -> None:
+    def remove(self, job_id: str, owner: str) -> None:
         with self.lock:
-            job = self._jobs.pop(job_id, None)
+            job = self._jobs.get(job_id)
+            if job and job["owner"] == owner:
+                self._jobs.pop(job_id)
+            else:
+                job = None
         if job and job["path"]:
             Path(job["path"]).unlink(missing_ok=True)
 
@@ -84,9 +89,9 @@ class JobStore:
             if path:
                 Path(path).unlink(missing_ok=True)
 
-    def _get(self, job_id: str) -> dict:
+    def _get(self, job_id: str, owner: str) -> dict:
         job = self._jobs.get(job_id)
-        if not job:
+        if not job or job["owner"] != owner:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="export job was not found.",

@@ -11,7 +11,7 @@ from app import actions
 from app.config import config
 from app.data.image import read_bytes
 from app.export.jobs import jobs
-from app.segment.model import segmenter
+from app.session import ModelSession
 
 
 def make_png(mask: np.ndarray, width: int, height: int) -> bytes:
@@ -42,31 +42,41 @@ def make_archive(
     job_id: str,
     width: int,
     files: list[tuple[str, BinaryIO]],
+    session: ModelSession,
 ) -> None:
-    jobs.start(job_id, len(files))
+    jobs.start(job_id, session.id, len(files))
     path = jobs.temp_path(job_id)
-    model = segmenter.load()
     used = set()
 
     try:
-        with ZipFile(path, "w", ZIP_STORED) as archive:
-            for index, (name, file) in enumerate(files, start=1):
-                image = read_bytes(file.read())
-                height = max(1, round(image.shape[0] / image.shape[1] * width))
-                resized = np.asarray(
-                    Image.fromarray(image).resize(
-                        (width, height),
-                        Image.Resampling.LANCZOS,
+        with session.lock:
+            model = session.segmenter.load()
+            with ZipFile(path, "w", ZIP_STORED) as archive:
+                for index, (name, file) in enumerate(files, start=1):
+                    image = read_bytes(file.read())
+                    height = max(1, round(image.shape[0] / image.shape[1] * width))
+                    resized = np.asarray(
+                        Image.fromarray(image).resize(
+                            (width, height),
+                            Image.Resampling.LANCZOS,
+                        )
                     )
-                )
-                mask = actions.predict(resized, model)
-                png = make_png(mask, image.shape[1], image.shape[0])
-                archive.writestr(_mask_name(name or f"image_{index}", used), png)
-                jobs.update(job_id, index)
-        jobs.finish(job_id, path)
+                    mask = actions.predict(
+                        resized,
+                        session.segmenter,
+                        session.refiner,
+                        model,
+                    )
+                    png = make_png(mask, image.shape[1], image.shape[0])
+                    archive.writestr(
+                        _mask_name(name or f"image_{index}", used),
+                        png,
+                    )
+                    jobs.update(job_id, session.id, index)
+        jobs.finish(job_id, session.id, path)
     except Exception as error:
         Path(path).unlink(missing_ok=True)
-        jobs.fail(job_id, str(error))
+        jobs.fail(job_id, session.id, str(error))
         raise
 
 

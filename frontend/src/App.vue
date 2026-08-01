@@ -9,12 +9,15 @@ import Workspace from './editor/Workspace.vue'
 import { useImages } from './images/collection'
 import { getOriginalImageSize } from './images/metadata'
 import { useModel } from './model/useModel'
+import { getSession, onSessionChange } from './model/session'
 import Sidebar from './sidebar/Sidebar.vue'
 
 const resizeWidth = ref(1024)
 const selectedLabel = ref(0)
 const brushSize = ref(BRUSH_SIZE.default)
 const workspaceRef = ref(null)
+const sessionId = ref('')
+let stopSession = () => {}
 
 const {
   images,
@@ -77,8 +80,17 @@ const handleShortcut = (event) => {
   event.preventDefault()
 }
 
-onMounted(() => window.addEventListener('keydown', handleShortcut))
-onBeforeUnmount(() => window.removeEventListener('keydown', handleShortcut))
+onMounted(() => {
+  window.addEventListener('keydown', handleShortcut)
+  stopSession = onSessionChange((id) => {
+    sessionId.value = id
+  })
+  void getSession().catch(() => {})
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleShortcut)
+  stopSession()
+})
 
 const resetLabels = () => {
   const image = selectedImage.value
@@ -179,5 +191,6 @@ const handleLabelState = (state) => {
         @update:brush-size="brushSize = $event"
       />
     </div>
+    <span v-if="sessionId" class="session-id">Session: {{ sessionId }}</span>
   </main>
 </template>

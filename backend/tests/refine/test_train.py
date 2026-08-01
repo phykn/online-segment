@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 import torch
@@ -23,11 +23,13 @@ class TrainTests(unittest.TestCase):
             classes_=np.array([0, 1], dtype=np.int8),
             model_id_="rf-id",
         )
+        segmenter = Mock()
+        segmenter.load.return_value = classifier
+        segmenter.prob.return_value = probs
+        refiner = Mock()
 
         with (
-            patch.object(train.segmenter, "load", return_value=classifier),
             patch.object(train, "read_item", return_value=(image, mask)),
-            patch.object(train.segmenter, "prob", return_value=probs),
             patch.object(
                 train,
                 "_select",
@@ -38,10 +40,10 @@ class TrainTests(unittest.TestCase):
             ) as select,
             patch.object(train, "_learn") as learn,
         ):
-            train.fit([target], target)
+            train.fit([target], target, segmenter, refiner)
 
         self.assertEqual(select.call_args.args[3], {0: 1, 1: 1})
-        data, classes, rf_id = learn.call_args.args
+        data, classes, rf_id, used_refiner = learn.call_args.args
         labels = data[0][2].ravel()
         weights = data[0][3].ravel()
         manual = data[0][4].ravel()
@@ -59,6 +61,7 @@ class TrainTests(unittest.TestCase):
         self.assertFalse(manual[15])
         self.assertTrue(np.array_equal(classes, classifier.classes_))
         self.assertEqual(rf_id, "rf-id")
+        self.assertIs(used_refiner, refiner)
 
     def test_focal_loss_only_changes_manual_pixels(self) -> None:
         logits = torch.zeros((1, 2, 1, 2))
@@ -110,14 +113,12 @@ class TrainTests(unittest.TestCase):
             path = Path(tmp) / "refine.pt"
             refiner = Refiner(path)
             cfg = train.cfg.model_copy(update={"patch": 32, "first_steps": 1})
-            with (
-                patch.object(train, "cfg", cfg),
-                patch.object(train, "refiner", refiner),
-            ):
+            with patch.object(train, "cfg", cfg):
                 result = train._learn(
                     [(image, probs, targets, weights, manual)],
                     classes,
                     "rf-id",
+                    refiner,
                 )
                 adjusted = refiner.adjust(
                     image,

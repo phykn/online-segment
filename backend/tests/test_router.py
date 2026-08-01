@@ -1,12 +1,24 @@
 import unittest
 
-from app.api.router import health_check
+from app.api.router import create_session, health_check, read_session
 from app.main import app
+from app.session import sessions
 
 
 class RouterTests(unittest.TestCase):
     def test_health(self) -> None:
         self.assertEqual(health_check(), {"status": "ok"})
+
+    def test_session_is_created_and_resolved(self) -> None:
+        created = create_session()
+        dependency = read_session(created.id)
+        try:
+            resolved = next(dependency)
+            self.assertEqual(resolved.id, created.id)
+            self.assertEqual(len(created.id), 32)
+        finally:
+            dependency.close()
+            sessions.close()
 
     def test_api_paths(self) -> None:
         paths = set(app.openapi()["paths"])
@@ -22,6 +34,7 @@ class RouterTests(unittest.TestCase):
                 "/api/health",
                 "/api/predict",
                 "/api/refine",
+                "/api/sessions",
             },
         )
 

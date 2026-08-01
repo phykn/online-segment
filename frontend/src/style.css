@@ -47,6 +47,17 @@ button {
   min-height: 100vh;
 }
 
+.session-id {
+  position: fixed;
+  z-index: 3;
+  right: 10px;
+  bottom: 8px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  user-select: all;
+}
+
 .editor-main {
   display: flex;
   min-width: 0;

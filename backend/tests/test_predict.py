@@ -1,6 +1,6 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock
 
 import numpy as np
 
@@ -18,18 +18,14 @@ class PredictTests(unittest.TestCase):
             model_id_="rf-id",
         )
 
-        with (
-            patch.object(actions.segmenter, "prob", return_value=probs) as prob,
-            patch.object(
-                actions.refiner,
-                "adjust",
-                return_value=refined,
-            ) as adjust,
-        ):
-            result = actions.predict(image, classifier)
+        segmenter = Mock()
+        segmenter.prob.return_value = probs
+        refiner = Mock()
+        refiner.adjust.return_value = refined
+        result = actions.predict(image, segmenter, refiner, classifier)
 
-        prob.assert_called_once_with(image, classifier)
-        adjust.assert_called_once_with(
+        segmenter.prob.assert_called_once_with(image, classifier)
+        refiner.adjust.assert_called_once_with(
             image,
             probs,
             classifier.classes_,
@@ -45,11 +41,16 @@ class PredictTests(unittest.TestCase):
             model_id_="rf-id",
         )
 
-        with (
-            patch.object(actions.segmenter, "prob", return_value=probs),
-            patch.object(actions.refiner, "adjust", return_value=probs),
-        ):
-            mask, uncertain = actions.infer(image, classifier)
+        segmenter = Mock()
+        segmenter.prob.return_value = probs
+        refiner = Mock()
+        refiner.adjust.return_value = probs
+        mask, uncertain = actions.infer(
+            image,
+            segmenter,
+            refiner,
+            classifier,
+        )
 
         self.assertEqual(mask.tolist(), [[0, 0]])
         self.assertEqual(uncertain.tolist(), [[0, 1]])

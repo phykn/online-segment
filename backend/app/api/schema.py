@@ -6,6 +6,10 @@ from pydantic import BaseModel, Field
 LabelValue = Literal[-1, 0, 1, 2, 3]
 
 
+class SessionResponse(BaseModel):
+    id: str
+
+
 class Mask(BaseModel):
     width: int = Field(gt=0)
     height: int = Field(gt=0)

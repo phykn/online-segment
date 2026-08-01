@@ -1,6 +1,7 @@
 import { getLabelMaskSnapshot } from '../editor/masks'
 import { decodeImage } from '../images/decode'
 import { setOriginalImageSize } from '../images/metadata'
+import { sessionFetch } from './session'
 
 const API_URL = '/api'
 
@@ -73,7 +74,7 @@ const makeItem = async (file) => {
 
 export const apply = async (images) => {
   const items = await Promise.all(images.map(makeItem))
-  const response = await fetch(`${API_URL}/apply`, {
+  const response = await sessionFetch('/apply', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ images: items }),
@@ -85,7 +86,7 @@ export const apply = async (images) => {
 }
 
 export const predict = async (file, width) => {
-  const response = await fetch(`${API_URL}/predict`, {
+  const response = await sessionFetch('/predict', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ image: await encodeImage(file, width) }),
@@ -102,7 +103,7 @@ export const refine = async (images, target) => {
     Promise.all(images.map(makeItem)),
     makeItem(target),
   ])
-  const response = await fetch(`${API_URL}/refine`, {
+  const response = await sessionFetch('/refine', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ images: items, target: targetItem }),
@@ -127,7 +128,7 @@ export const exportMask = async (mask, width, height) => {
 }
 
 const createExport = async () => {
-  const response = await fetch(`${API_URL}/export/jobs`, { method: 'POST' })
+  const response = await sessionFetch('/export/jobs', { method: 'POST' })
   if (!response.ok) {
     throw new Error(await readError(response, 'Could not start the export.'))
   }
@@ -139,7 +140,7 @@ const runExport = async (id, files, width) => {
   body.append('width', String(width))
   for (const file of files) body.append('files', file, file.name)
 
-  const response = await fetch(`${API_URL}/export/jobs/${id}`, {
+  const response = await sessionFetch(`/export/jobs/${id}`, {
     method: 'POST',
     body,
   })
@@ -149,7 +150,7 @@ const runExport = async (id, files, width) => {
 }
 
 const getExport = async (id) => {
-  const response = await fetch(`${API_URL}/export/jobs/${id}`)
+  const response = await sessionFetch(`/export/jobs/${id}`)
   if (!response.ok) {
     throw new Error(await readError(response, 'Could not read export progress.'))
   }
@@ -157,7 +158,7 @@ const getExport = async (id) => {
 }
 
 const getExportFile = async (id) => {
-  const response = await fetch(`${API_URL}/export/jobs/${id}/file`)
+  const response = await sessionFetch(`/export/jobs/${id}/file`)
   if (!response.ok) {
     throw new Error(await readError(response, 'Could not download the export.'))
   }

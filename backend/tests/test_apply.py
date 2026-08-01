@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 
@@ -41,16 +41,14 @@ class ApplyTests(unittest.TestCase):
     def test_apply_resets_refine_model_after_rf_training(self) -> None:
         x = np.zeros((4, 3), dtype=np.float32)
         y = np.array([0, 0, 1, 1], dtype=np.int8)
+        segmenter = Mock()
+        refiner = Mock()
 
-        with (
-            patch.object(actions, "make_data", return_value=(x, y)),
-            patch.object(actions.segmenter, "fit") as fit_model,
-            patch.object(actions.refiner, "reset") as reset,
-        ):
-            actions.apply([])
+        with patch.object(actions, "make_data", return_value=(x, y)):
+            actions.apply([], segmenter, refiner)
 
-        fit_model.assert_called_once_with(x, y)
-        reset.assert_called_once_with()
+        segmenter.fit.assert_called_once_with(x, y)
+        refiner.reset.assert_called_once_with()
 
 
 if __name__ == "__main__":

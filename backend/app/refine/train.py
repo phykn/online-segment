@@ -8,15 +8,20 @@ from app.api.schema import TrainItem
 from app.config import config
 from app.data.mask import read_item
 from app.refine import net
-from app.refine.model import refiner
+from app.refine.model import Refiner
 from app.segment import feature
-from app.segment.model import segmenter
+from app.segment.model import Segmenter
 
 
 cfg = config.refine
 
 
-def fit(items: list[TrainItem], target: TrainItem) -> None:
+def fit(
+    items: list[TrainItem],
+    target: TrainItem,
+    segmenter: Segmenter,
+    refiner: Refiner,
+) -> None:
     classifier = segmenter.load()
     classes = classifier.classes_.astype(np.int8)
     class_idx = {int(label): idx for idx, label in enumerate(classes)}
@@ -72,7 +77,7 @@ def fit(items: list[TrainItem], target: TrainItem) -> None:
                 flat_weights[selected] = cfg.pseudo_weight
         data.append((image, probs, targets, weights, manual))
 
-    _learn(data, classes, classifier.model_id_)
+    _learn(data, classes, classifier.model_id_, refiner)
 
 
 def _core(labels: np.ndarray) -> np.ndarray:
@@ -146,7 +151,12 @@ def _select(
     return indices, labels[indices]
 
 
-def _learn(data, classes: np.ndarray, rf_id: str) -> dict:
+def _learn(
+    data,
+    classes: np.ndarray,
+    rf_id: str,
+    refiner: Refiner,
+) -> dict:
     device = net.device()
 
     with refiner.lock:

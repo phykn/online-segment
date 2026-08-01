@@ -6,7 +6,6 @@ import numpy as np
 import torch
 from fastapi import HTTPException, status
 
-from app import MODELS
 from app.config import config
 from app.refine import net
 from app.segment import feature
@@ -116,6 +115,3 @@ class Refiner:
             ):
                 output = torch.softmax(corrector(value), dim=1)[0]
             return output.float().cpu().numpy().transpose(1, 2, 0)
-
-
-refiner = Refiner(MODELS / config.refine.file)

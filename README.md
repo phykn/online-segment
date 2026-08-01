@@ -17,6 +17,8 @@ A self-hosted tool for creating segmentation masks from sparse brush annotations
 
 The uncertainty overlay marks low-confidence pixels for review without altering the mask.
 
+Each open page receives an isolated model session, so users do not overwrite one another's random forest, U-Net, or batch export state. Session files are stored in the operating system's temporary directory and removed after one hour of inactivity or server shutdown.
+
 ## Output
 
 Result masks are exported as indexed palette PNG files with label values `0–3`. Masks are resized to the original image dimensions with nearest-neighbor interpolation. Manual-label exports use `255` for unpainted pixels.
@@ -46,6 +48,8 @@ npm run build
 cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
 ```
+
+Sessions are process-local, so the server must run with one worker.
 
 ## Controls
 

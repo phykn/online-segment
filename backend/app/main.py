@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -5,9 +7,16 @@ from fastapi.staticfiles import StaticFiles
 from app import ROOT
 from app.api.router import router
 from app.config import config
+from app.session import sessions
 
 
-app = FastAPI(title=config.server.title)
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    yield
+    sessions.close()
+
+
+app = FastAPI(title=config.server.title, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

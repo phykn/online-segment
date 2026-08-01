@@ -7,7 +7,6 @@ import numpy as np
 from fastapi import HTTPException, status
 from sklearn.ensemble import RandomForestClassifier
 
-from app import MODELS
 from app.config import config
 from app.segment import edge, feature
 
@@ -118,6 +117,3 @@ class Segmenter:
             tmp.replace(self.path)
         finally:
             tmp.unlink(missing_ok=True)
-
-
-segmenter = Segmenter(MODELS / cfg.file)

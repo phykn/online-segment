@@ -4,6 +4,10 @@ server:
     - http://localhost:5173
     - http://127.0.0.1:5173
 
+session:
+  max_age: 3600
+  temp_prefix: online-segment-session
+
 model:
   file: model.joblib
   kind: random_forest

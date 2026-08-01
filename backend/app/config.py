@@ -9,6 +9,11 @@ class ServerConfig(BaseModel):
     origins: list[str] = Field(min_length=1)
 
 
+class SessionConfig(BaseModel):
+    max_age: int = Field(gt=0)
+    temp_prefix: str = Field(min_length=1)
+
+
 class ModelConfig(BaseModel):
     file: str = Field(min_length=1)
     kind: str = Field(min_length=1)
@@ -94,6 +99,7 @@ class ExportConfig(BaseModel):
 
 class Config(BaseModel):
     server: ServerConfig
+    session: SessionConfig
     model: ModelConfig
     feature: FeatureConfig
     edge: EdgeConfig
