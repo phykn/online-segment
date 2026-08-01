@@ -246,7 +246,7 @@ defineExpose({ resetLabels })
             class="canvas-stack"
             :class="{ 'canvas-stack--panning': panning }"
             :style="{ transform: canvasTransform }"
-            @wheel.prevent="imageInput.wheel"
+            @wheel="imageInput.wheel"
           >
             <canvas
               ref="imageCanvasRef"
@@ -288,7 +288,7 @@ defineExpose({ resetLabels })
               class="workspace__result-stack"
               :class="{ 'canvas-stack--panning': resultPanning }"
               :style="{ transform: resultTransform }"
-              @wheel.prevent="resultInput.wheel"
+              @wheel="resultInput.wheel"
               @pointerdown="resultInput.pointerDown"
               @pointermove="resultInput.pointerMove"
               @pointerup="resultInput.pointerEnd"

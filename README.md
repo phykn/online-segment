@@ -55,10 +55,10 @@ Sessions are process-local, so the server must run with one worker.
 
 | Input | Action |
 | --- | --- |
-| Wheel | Change brush size |
-| Alt + Wheel | Zoom |
+| B + Wheel | Change brush size |
+| Z + Wheel | Zoom |
 | Right drag | Pan while zoomed |
-| 0–3 or Numpad 0–3 | Select label |
+| 0–3 Keys | Select label |
 | Delete | Select eraser |
 | Space | Apply |
 | Enter or Numpad Enter | Refine |

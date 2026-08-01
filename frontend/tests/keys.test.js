@@ -1,7 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { isTyping, keyAction } from '../src/editor/keys.js'
+import {
+  clearWheelKeys,
+  isTyping,
+  keyAction,
+  setWheelKey,
+  wheelAction,
+} from '../src/editor/keys.js'
 
 test('maps label, eraser, apply, and refine shortcuts', () => {
   assert.deepEqual(keyAction('Digit0'), { name: 'label', value: 0 })
@@ -19,4 +25,18 @@ test('ignores shortcuts only while typing', () => {
   assert.equal(isTyping({ tagName: 'SELECT' }), true)
   assert.equal(isTyping({ isContentEditable: true }), true)
   assert.equal(isTyping({ tagName: 'BUTTON' }), false)
+})
+
+test('uses B and Z as wheel modes', () => {
+  clearWheelKeys()
+  assert.equal(wheelAction(), null)
+  assert.equal(setWheelKey('KeyB', true), true)
+  assert.equal(wheelAction(), 'brush')
+  assert.equal(setWheelKey('KeyZ', true), true)
+  assert.equal(wheelAction(), 'zoom')
+  setWheelKey('KeyZ', false)
+  assert.equal(wheelAction(), 'brush')
+  setWheelKey('KeyB', false)
+  assert.equal(wheelAction(), null)
+  assert.equal(setWheelKey('AltLeft', true), false)
 })

@@ -1,6 +1,7 @@
 import { nextTick } from 'vue'
 
 import { BRUSH_SIZE, ERASER_LABEL, LABELS } from './config'
+import { wheelAction } from './keys'
 import { useViewport } from './viewport'
 
 const LEFT_BUTTON = 0
@@ -40,7 +41,11 @@ export const useCanvasInput = ({
 
   const wheel = (event) => {
     if (!canEdit()) return
-    if (event.altKey) {
+    const action = wheelAction()
+    if (!action) return
+
+    event.preventDefault()
+    if (action === 'zoom') {
       viewport.handleZoomWheel(event)
       return
     }

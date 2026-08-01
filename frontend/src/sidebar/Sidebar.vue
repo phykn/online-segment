@@ -187,10 +187,10 @@ const handleDragLeave = (event) => {
       </div>
 
       <ul class="shortcut-list" aria-label="Canvas controls">
-        <li><kbd>0–3 / Num 0–3</kbd><span>Label</span></li>
+        <li><kbd>0–3 Keys</kbd><span>Label</span></li>
         <li><kbd>Delete</kbd><span>Eraser</span></li>
-        <li><kbd>Wheel</kbd><span>Brush size</span></li>
-        <li><kbd>Alt + Wheel</kbd><span>Zoom</span></li>
+        <li><kbd>B + Wheel</kbd><span>Brush size</span></li>
+        <li><kbd>Z + Wheel</kbd><span>Zoom</span></li>
         <li><kbd>Right drag</kbd><span>Pan</span></li>
       </ul>
     </div>

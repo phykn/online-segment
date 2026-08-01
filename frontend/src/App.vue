@@ -2,7 +2,12 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { BRUSH_SIZE, ERASER_LABEL } from './editor/config'
-import { isTyping, keyAction } from './editor/keys'
+import {
+  clearWheelKeys,
+  isTyping,
+  keyAction,
+  setWheelKey,
+} from './editor/keys'
 import { resizeLabelMask } from './editor/masks'
 import Toolbar from './editor/Toolbar.vue'
 import Workspace from './editor/Workspace.vue'
@@ -64,6 +69,10 @@ const {
 
 const handleShortcut = (event) => {
   if (isTyping(event.target)) return
+  if (setWheelKey(event.code, true)) {
+    event.preventDefault()
+    return
+  }
 
   const action = keyAction(event.code)
   if (!action) return
@@ -80,8 +89,14 @@ const handleShortcut = (event) => {
   event.preventDefault()
 }
 
+const handleKeyUp = (event) => {
+  setWheelKey(event.code, false)
+}
+
 onMounted(() => {
   window.addEventListener('keydown', handleShortcut)
+  window.addEventListener('keyup', handleKeyUp)
+  window.addEventListener('blur', clearWheelKeys)
   stopSession = onSessionChange((id) => {
     sessionId.value = id
   })
@@ -89,6 +104,9 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleShortcut)
+  window.removeEventListener('keyup', handleKeyUp)
+  window.removeEventListener('blur', clearWheelKeys)
+  clearWheelKeys()
   stopSession()
 })
 
