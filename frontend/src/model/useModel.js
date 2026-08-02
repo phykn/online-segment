@@ -7,13 +7,18 @@ import {
 import { getOriginalImageSize } from '../images/metadata'
 import {
   apply as applyApi,
-  encodeMask,
   exportAll,
-  exportMask,
+  exportMasks,
   predict as predictApi,
   refine as refineApi,
 } from './api'
-import { makeResult, maskName, saveBlob } from './output'
+import { encodeMask, mergeLabels } from './masks'
+import {
+  archiveName,
+  makeResult,
+  maskName,
+  saveBlob,
+} from './output'
 import { isCurrent, ResultCache } from './results'
 
 export const useModel = ({
@@ -29,6 +34,7 @@ export const useModel = ({
   const downloadingAll = ref(false)
   const downloadProgress = ref(0)
   const trained = ref(false)
+  const forceLabels = ref(true)
   const revision = ref(0)
   const error = ref('')
   const result = ref(null)
@@ -54,6 +60,9 @@ export const useModel = ({
   const canDownloadLabels = computed(() =>
     labeledImages.value.has(selectedImage.value),
   )
+  const canDownloadMasks = computed(
+    () => canDownload.value || canDownloadLabels.value,
+  )
   const canDownloadAll = computed(() =>
     trained.value && images.value.length > 0,
   )
@@ -64,6 +73,7 @@ export const useModel = ({
     sending.value ||
     refining.value ||
     predicting.value ||
+    downloading.value ||
     downloadingAll.value,
   )
 
@@ -72,11 +82,12 @@ export const useModel = ({
   }
 
   const setResult = (image, width, version, response) => {
+    const labels = getLabelMaskSnapshot(image)
     result.value = results.set(
       image,
       width,
       version,
-      makeResult(response),
+      makeResult(response, labels, forceLabels.value),
     )
   }
 
@@ -93,6 +104,29 @@ export const useModel = ({
   const updateRevision = () => {
     revision.value += 1
     results.clear()
+  }
+
+  const resetModel = () => {
+    trained.value = false
+    updateRevision()
+    result.value = null
+  }
+
+  const refreshLabels = (image) => {
+    if (!forceLabels.value) return
+
+    const current = result.value
+    if (
+      !isCurrent(
+        current,
+        image,
+        resizeWidth.value,
+        revision.value,
+      )
+    ) {
+      return
+    }
+    setResult(image, current.width, current.revision, current.source)
   }
 
   const getTrainImages = (first = null) => {
@@ -112,7 +146,7 @@ export const useModel = ({
     const version = revision.value
     const cached = results.get(image, width, version)
     if (cached) {
-      result.value = cached
+      setResult(image, width, version, cached.source)
       return
     }
     if (predicting.value) return
@@ -136,7 +170,7 @@ export const useModel = ({
   }
 
   const apply = async () => {
-    if (sending.value || labeledImages.value.size === 0) return
+    if (busy.value || labeledImages.value.size === 0) return
 
     const current = selectedImage.value
     const width = resizeWidth.value
@@ -175,41 +209,25 @@ export const useModel = ({
     }
   }
 
-  const downloadResult = async () => {
-    const image = selectedImage.value
-    const current = result.value?.image === image ? result.value : null
-    const size = image ? getOriginalImageSize(image) : null
-    if (
-      !image ||
-      !current ||
-      !canDownload.value ||
-      !size ||
-      downloading.value ||
-      downloadingAll.value
-    ) {
-      return
-    }
+  const setForceLabels = (value) => {
+    if (forceLabels.value === value) return
 
-    downloading.value = true
-    clearError()
-    try {
-      const blob = await exportMask(current.mask, size.width, size.height)
-      saveBlob(blob, maskName(image, '_result'))
-    } catch (err) {
-      error.value = err.message
-    } finally {
-      downloading.value = false
+    const image = selectedImage.value
+    const current = canDownload.value ? result.value : null
+    forceLabels.value = value
+    if (image && current) {
+      setResult(image, current.width, current.revision, current.source)
     }
   }
 
-  const downloadLabels = async () => {
+  const downloadMasks = async () => {
     const image = selectedImage.value
-    const mask = image ? getLabelMaskSnapshot(image) : null
+    const current = result.value?.image === image ? result.value : null
+    const labels = image ? getLabelMaskSnapshot(image) : null
     const size = image ? getOriginalImageSize(image) : null
     if (
       !image ||
-      !mask ||
-      !hasImageLabels(image) ||
+      !canDownloadMasks.value ||
       !size ||
       downloading.value ||
       downloadingAll.value
@@ -220,12 +238,28 @@ export const useModel = ({
     downloading.value = true
     clearError()
     try {
-      const blob = await exportMask(
-        encodeMask(mask),
+      const files = []
+      if (current && canDownload.value) {
+        files.push({
+          name: maskName(image, '_result'),
+          mask:
+            forceLabels.value && labels
+              ? mergeLabels(current.mask, labels)
+              : current.mask,
+        })
+      }
+      if (labels && hasImageLabels(image)) {
+        files.push({
+          name: maskName(image, '_drawn'),
+          mask: encodeMask(labels),
+        })
+      }
+      const blob = await exportMasks(
+        files,
         size.width,
         size.height,
       )
-      saveBlob(blob, maskName(image, '_drawn'))
+      saveBlob(blob, archiveName(image))
     } catch (err) {
       error.value = err.message
     } finally {
@@ -243,6 +277,7 @@ export const useModel = ({
       const blob = await exportAll(
         images.value,
         resizeWidth.value,
+        forceLabels.value,
         (progress) => {
           downloadProgress.value = progress
         },
@@ -264,21 +299,23 @@ export const useModel = ({
     downloadingAll,
     downloadProgress,
     trained,
+    forceLabels,
     error,
     resultImage,
     uncertaintyImage,
-    canDownload,
-    canDownloadLabels,
+    canDownloadMasks,
     canDownloadAll,
     canRefine,
     busy,
     clearError,
     clearResult,
+    refreshLabels,
+    resetModel,
     apply,
     refine,
     predict,
+    setForceLabels,
     downloadAll,
-    downloadLabels,
-    downloadResult,
+    downloadMasks,
   }
 }

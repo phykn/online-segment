@@ -7,17 +7,21 @@ from fastapi import (
     File,
     Form,
     Header,
+    HTTPException,
     Response,
     UploadFile,
     status,
 )
+from pydantic import ValidationError
 from starlette.background import BackgroundTask
 from starlette.responses import FileResponse
 
 from app import actions
 from app.api.schema import (
     ApplyRequest,
+    ExportArchiveRequest,
     ExportRequest,
+    Mask,
     PredRequest,
     PredResponse,
     RefineRequest,
@@ -63,11 +67,13 @@ def apply_model(payload: ApplyRequest, session: SessionDep) -> None:
 @router.post("/predict", response_model=PredResponse, tags=["model"])
 def predict(payload: PredRequest, session: SessionDep) -> PredResponse:
     image = read_image(payload.image)
+    selected = decode(payload.labels) if payload.labels else None
     with session.lock:
         mask, uncertain = actions.infer(
             image,
             session.segmenter,
             session.refiner,
+            selected=selected,
         )
     return PredResponse(mask=encode(mask), uncertain=encode(uncertain))
 
@@ -90,6 +96,17 @@ def export_mask(payload: ExportRequest) -> Response:
     return Response(content=png, media_type="image/png")
 
 
+@router.post("/export/archive", tags=["export"])
+def export_archive(payload: ExportArchiveRequest) -> Response:
+    files = [(item.name, decode(item.mask)) for item in payload.files]
+    archive = export_files.make_mask_archive(
+        files,
+        payload.width,
+        payload.height,
+    )
+    return Response(content=archive, media_type="application/zip")
+
+
 @router.post("/export/jobs", tags=["export"])
 def create_job(session: SessionDep) -> dict[str, str]:
     return {"id": jobs.create(session.id)}
@@ -105,9 +122,27 @@ def run_job(
     session: SessionDep,
     width: int = Form(gt=0),
     files: list[UploadFile] = File(min_length=1),
+    labels: list[str] | None = Form(default=None),
 ) -> None:
     items = [(file.filename or "image", file.file) for file in files]
-    export_files.make_archive(job_id, width, items, session)
+    if labels is not None and len(labels) != len(files):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="file and mask counts differ.",
+        )
+
+    try:
+        selected = [
+            None if value == "null" else decode(Mask.model_validate_json(value))
+            for value in labels or ["null"] * len(files)
+        ]
+    except ValidationError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="invalid mask RLE.",
+        ) from error
+
+    export_files.make_archive(job_id, width, items, selected, session)
 
 
 @router.get("/export/jobs/{job_id}", tags=["export"])

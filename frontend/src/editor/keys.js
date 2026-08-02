@@ -13,7 +13,11 @@ export const keyAction = (code) => {
 }
 
 export const isTyping = (target) =>
-  ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName) ||
+  (target?.tagName === 'INPUT' &&
+    !['button', 'checkbox', 'file', 'radio', 'range', 'reset', 'submit'].includes(
+      target?.type,
+    )) ||
+  ['TEXTAREA', 'SELECT'].includes(target?.tagName) ||
   Boolean(target?.isContentEditable)
 
 export const setWheelKey = (code, pressed) => {

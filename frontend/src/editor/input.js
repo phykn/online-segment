@@ -13,12 +13,15 @@ export const useCanvasInput = ({
   setBrushSize,
   getLabel,
   canEdit,
+  start,
   stamp,
   line,
+  finish,
 }) => {
   const viewport = useViewport(canvasRef, getBrushSize)
   let painting = false
   let lastPoint = null
+  let lastMidpoint = null
 
   const updateCursor = (event) => {
     const label = getLabel()
@@ -28,10 +31,13 @@ export const useCanvasInput = ({
   }
 
   const cancel = () => {
+    const wasPainting = painting
     painting = false
     lastPoint = null
+    lastMidpoint = null
     viewport.stopPan()
     viewport.hideCursor()
+    if (wasPainting) finish()
   }
 
   const reset = () => {
@@ -73,7 +79,9 @@ export const useCanvasInput = ({
     updateCursor(event)
     painting = true
     event.currentTarget.setPointerCapture(event.pointerId)
+    start()
     lastPoint = viewport.getCanvasPoint(event)
+    lastMidpoint = lastPoint
     stamp(lastPoint, viewport.getBrushRadius(), getLabel())
   }
 
@@ -83,15 +91,41 @@ export const useCanvasInput = ({
     if (!updateCursor(event) || !painting || !lastPoint) return
 
     event.preventDefault()
-    const point = viewport.getCanvasPoint(event)
-    line(lastPoint, point, viewport.getBrushRadius(), getLabel())
-    lastPoint = point
+    const samples = event.getCoalescedEvents?.() ?? []
+    for (const sample of samples.length ? samples : [event]) {
+      const point = viewport.getCanvasPoint(sample)
+      const midpoint = {
+        x: (lastPoint.x + point.x) / 2,
+        y: (lastPoint.y + point.y) / 2,
+      }
+      line(
+        lastMidpoint,
+        lastPoint,
+        midpoint,
+        viewport.getBrushRadius(),
+        getLabel(),
+      )
+      lastPoint = point
+      lastMidpoint = midpoint
+    }
   }
 
   const pointerEnd = (event) => {
+    const wasPainting = painting
+    if (wasPainting && lastPoint && lastMidpoint) {
+      line(
+        lastMidpoint,
+        lastPoint,
+        lastPoint,
+        viewport.getBrushRadius(),
+        getLabel(),
+      )
+    }
     viewport.stopPan()
     painting = false
     lastPoint = null
+    lastMidpoint = null
+    if (wasPainting) finish()
 
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)

@@ -15,13 +15,13 @@ A self-hosted tool for creating segmentation masks from sparse brush annotations
 
 **Refine** trains a lightweight U-Net from manual annotations and high-confidence prediction interiors. Manual labels retain full weight; pseudo-labels receive a lower weight.
 
-The uncertainty overlay marks low-confidence pixels for review without altering the mask.
+The uncertainty overlay marks low-confidence pixels for review without altering the mask. The **Override** toggle controls whether manually painted labels override the model output after inference.
 
 Each open page receives an isolated model session, so users do not overwrite one another's random forest, U-Net, or batch export state. Session files are stored in the operating system's temporary directory and removed after one hour of inactivity or server shutdown.
 
 ## Output
 
-Result masks are exported as indexed palette PNG files with label values `0–3`. Masks are resized to the original image dimensions with nearest-neighbor interpolation. Manual-label exports use `255` for unpainted pixels.
+The unified **Download** action saves the available result and drawn masks together in a ZIP file. Masks are stored losslessly as indexed palette PNG files with label values `0–3` and resized to the original image dimensions with nearest-neighbor interpolation. Drawn masks use `255` for unpainted pixels.
 
 ## Install
 

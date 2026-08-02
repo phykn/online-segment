@@ -1,4 +1,4 @@
-import { ERASER_LABEL } from './config'
+import { ERASER_LABEL } from './config.js'
 
 const masksByImage = new WeakMap()
 const variantsByImage = new WeakMap()

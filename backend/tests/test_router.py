@@ -28,6 +28,7 @@ class RouterTests(unittest.TestCase):
             {
                 "/api/apply",
                 "/api/export",
+                "/api/export/archive",
                 "/api/export/jobs",
                 "/api/export/jobs/{job_id}",
                 "/api/export/jobs/{job_id}/file",

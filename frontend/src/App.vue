@@ -49,22 +49,24 @@ const {
   downloadingAll,
   downloadProgress,
   trained,
+  forceLabels,
   error: modelError,
   resultImage,
   uncertaintyImage,
-  canDownload,
-  canDownloadLabels,
+  canDownloadMasks,
   canDownloadAll,
   canRefine,
   busy,
   clearError,
   clearResult,
+  refreshLabels,
+  resetModel,
   apply,
   refine,
   predict,
+  setForceLabels,
   downloadAll,
-  downloadLabels,
-  downloadResult,
+  downloadMasks,
 } = model
 
 const handleShortcut = (event) => {
@@ -98,7 +100,9 @@ onMounted(() => {
   window.addEventListener('keyup', handleKeyUp)
   window.addEventListener('blur', clearWheelKeys)
   stopSession = onSessionChange((id) => {
+    const changed = Boolean(sessionId.value && sessionId.value !== id)
     sessionId.value = id
+    if (changed) resetModel()
   })
   void getSession().catch(() => {})
 })
@@ -120,9 +124,15 @@ const resetLabels = () => {
 
 const removeAt = (index) => {
   const image = images.value[index]
+  if (!image) return
+
+  const wasSelected = image === selectedImage.value
   removeImage(index)
   clearResult(image)
   clearError()
+  if (wasSelected && trained.value && selectedImage.value) {
+    void predict(selectedImage.value)
+  }
 }
 
 const selectAt = (index) => {
@@ -139,6 +149,8 @@ const selectAt = (index) => {
 }
 
 const setWidth = (width) => {
+  if (width === resizeWidth.value) return
+
   resizeWidth.value = width
   for (const image of images.value) {
     const size = getOriginalImageSize(image)
@@ -149,11 +161,15 @@ const setWidth = (width) => {
   }
   clearResult()
   clearError()
+  if (trained.value && selectedImage.value) {
+    void predict(selectedImage.value, width)
+  }
 }
 
 const handleLabelState = (state) => {
   updateLabelState(state)
   if (state.changed) clearError()
+  if (state.committed) refreshLabels(state.image)
 }
 </script>
 
@@ -167,9 +183,17 @@ const handleLabelState = (state) => {
       :downloading-all="downloadingAll"
       :download-progress="downloadProgress"
       :can-download-all="canDownloadAll"
+      :labeled-count="labeledImages.size"
+      :sending="sending"
+      :refining="refining"
+      :can-refine="canRefine"
+      :model-error="modelError"
+      :session-id="sessionId"
       @add-images="addImages"
       @remove-image="removeAt"
       @select-image="selectAt"
+      @apply="apply"
+      @refine="refine"
       @download-all="downloadAll"
     />
     <div class="editor-main">
@@ -177,15 +201,8 @@ const handleLabelState = (state) => {
         :resize-width="resizeWidth"
         :selected-label="selectedLabel"
         :brush-size="brushSize"
-        :labeled-count="labeledImages.size"
-        :sending="sending"
-        :refining="refining"
         :busy="busy"
-        :can-refine="canRefine"
         :can-reset="labeledImages.has(selectedImage)"
-        :model-error="modelError"
-        @apply="apply"
-        @refine="refine"
         @reset-labels="resetLabels"
         @update:resize-width="setWidth"
         @update:selected-label="selectedLabel = $event"
@@ -199,16 +216,15 @@ const handleLabelState = (state) => {
         :brush-size="brushSize"
         :result-image="resultImage"
         :uncertainty-image="uncertaintyImage"
-        :can-download-result="canDownload"
-        :can-download-labels="canDownloadLabels"
+        :force-labels="forceLabels"
+        :can-download="canDownloadMasks"
         :downloading="downloading"
         :busy="busy"
-        @download-result="downloadResult"
-        @download-labels="downloadLabels"
+        @download="downloadMasks"
+        @update:force-labels="setForceLabels"
         @label-state-change="handleLabelState"
         @update:brush-size="brushSize = $event"
       />
     </div>
-    <span v-if="sessionId" class="session-id">Session: {{ sessionId }}</span>
   </main>
 </template>

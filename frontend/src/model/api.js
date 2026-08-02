@@ -1,6 +1,7 @@
 import { getLabelMaskSnapshot } from '../editor/masks'
 import { decodeImage } from '../images/decode'
 import { setOriginalImageSize } from '../images/metadata'
+import { encodeMask } from './masks'
 import { sessionFetch } from './session'
 
 const API_URL = '/api'
@@ -13,31 +14,6 @@ const readError = async (response, fallback) => {
     return fallback
   }
 }
-
-const encodeRle = (data) => {
-  const runs = []
-  let value = data[0]
-  let length = 1
-
-  for (let index = 1; index < data.length; index += 1) {
-    if (data[index] === value) {
-      length += 1
-    } else {
-      runs.push([value, length])
-      value = data[index]
-      length = 1
-    }
-  }
-
-  runs.push([value, length])
-  return runs
-}
-
-export const encodeMask = (mask) => ({
-  width: mask.width,
-  height: mask.height,
-  runs: encodeRle(mask.data),
-})
 
 const encodeImage = async (file, targetWidth = null) => {
   const mask = getLabelMaskSnapshot(file)
@@ -89,7 +65,9 @@ export const predict = async (file, width) => {
   const response = await sessionFetch('/predict', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: await encodeImage(file, width) }),
+    body: JSON.stringify({
+      image: await encodeImage(file, width),
+    }),
   })
 
   if (!response.ok) {
@@ -114,15 +92,15 @@ export const refine = async (images, target) => {
   }
 }
 
-export const exportMask = async (mask, width, height) => {
-  const response = await fetch(`${API_URL}/export`, {
+export const exportMasks = async (files, width, height) => {
+  const response = await fetch(`${API_URL}/export/archive`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mask, width, height }),
+    body: JSON.stringify({ files, width, height }),
   })
 
   if (!response.ok) {
-    throw new Error(await readError(response, 'Could not export the mask.'))
+    throw new Error(await readError(response, 'Could not export the masks.'))
   }
   return response.blob()
 }
@@ -135,10 +113,17 @@ const createExport = async () => {
   return response.json()
 }
 
-const runExport = async (id, files, width) => {
+const runExport = async (id, files, width, forceLabels) => {
   const body = new FormData()
   body.append('width', String(width))
-  for (const file of files) body.append('files', file, file.name)
+  for (const file of files) {
+    const labels = forceLabels ? getLabelMaskSnapshot(file) : null
+    body.append('files', file, file.name)
+    body.append(
+      'labels',
+      JSON.stringify(labels ? encodeMask(labels) : null),
+    )
+  }
 
   const response = await sessionFetch(`/export/jobs/${id}`, {
     method: 'POST',
@@ -167,10 +152,10 @@ const getExportFile = async (id) => {
 
 const wait = () => new Promise((resolve) => setTimeout(resolve, 200))
 
-export const exportAll = async (files, width, onProgress) => {
+export const exportAll = async (files, width, forceLabels, onProgress) => {
   const { id } = await createExport()
   let taskError = null
-  const task = runExport(id, files, width).catch((error) => {
+  const task = runExport(id, files, width, forceLabels).catch((error) => {
     taskError = error
   })
 

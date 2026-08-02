@@ -75,6 +75,7 @@ def infer(
     segmenter: Segmenter,
     refiner: Refiner,
     classifier: RandomForestClassifier | None = None,
+    selected: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     classifier = classifier or segmenter.load()
     probs = segmenter.prob(image, classifier)
@@ -86,6 +87,15 @@ def infer(
     )
     labels = classifier.classes_[np.argmax(probs, axis=2)]
     uncertain = np.max(probs, axis=2) < cfg.uncertain_threshold
+    if selected is not None:
+        if selected.shape != labels.shape:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="image and mask sizes differ.",
+            )
+        manual = selected >= 0
+        labels[manual] = selected[manual]
+        uncertain[manual] = False
     return labels.astype(np.int8), uncertain.astype(np.int8)
 
 
@@ -94,5 +104,6 @@ def predict(
     segmenter: Segmenter,
     refiner: Refiner,
     classifier: RandomForestClassifier | None = None,
+    selected: np.ndarray | None = None,
 ) -> np.ndarray:
-    return infer(image, segmenter, refiner, classifier)[0]
+    return infer(image, segmenter, refiner, classifier, selected)[0]

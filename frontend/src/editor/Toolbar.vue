@@ -2,24 +2,16 @@
 import { ref, watch } from 'vue'
 
 import { BRUSH_SIZE, ERASER_LABEL, LABELS } from './config'
-import ModelControls from './ModelControls.vue'
 
 const props = defineProps({
   resizeWidth: { type: Number, required: true },
   selectedLabel: { type: Number, required: true },
   brushSize: { type: Number, required: true },
-  labeledCount: { type: Number, required: true },
-  sending: { type: Boolean, required: true },
-  refining: { type: Boolean, required: true },
   busy: { type: Boolean, required: true },
-  canRefine: { type: Boolean, required: true },
   canReset: { type: Boolean, required: true },
-  modelError: { type: String, default: '' },
 })
 
 const emit = defineEmits([
-  'apply',
-  'refine',
   'reset-labels',
   'update:resize-width',
   'update:selected-label',
@@ -108,20 +100,11 @@ const commitWidth = () => {
             class="label-option__button label-option__reset"
             type="button"
             :disabled="!canReset || busy"
-            aria-label="Reset labels"
-            title="Reset labels"
+            aria-label="Clear all labels"
+            title="Clear all labels"
             @click="emit('reset-labels')"
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              aria-hidden="true"
-            >
-              <path d="M4 4v5h5" />
-              <path d="M5.1 16.5A8 8 0 1 0 4 9" />
-            </svg>
+            <span>Clear</span>
           </button>
         </div>
       </div>
@@ -137,23 +120,11 @@ const commitWidth = () => {
           :value="brushSize"
           :aria-valuetext="brushSize + ' px'"
           @input="emit('update:brush-size', Number($event.target.value))"
+          @pointerup="$event.currentTarget.blur()"
+          @pointercancel="$event.currentTarget.blur()"
         />
-        <span class="brush-option__value">{{ brushSize }} px</span>
       </label>
 
-      <ModelControls
-        :labeled-count="labeledCount"
-        :sending="sending"
-        :refining="refining"
-        :busy="busy"
-        :can-refine="canRefine"
-        @apply="emit('apply')"
-        @refine="emit('refine')"
-      />
     </div>
-
-    <p v-if="modelError" class="model-error" role="alert">
-      {{ modelError }}
-    </p>
   </section>
 </template>

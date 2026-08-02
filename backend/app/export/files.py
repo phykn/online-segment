@@ -34,7 +34,23 @@ def make_png(mask: np.ndarray, width: int, height: int) -> bytes:
     image = image.resize((width, height), Image.Resampling.NEAREST)
 
     output = BytesIO()
-    image.save(output, format="PNG")
+    image.save(output, format="PNG", compress_level=9)
+    return output.getvalue()
+
+
+def make_mask_archive(
+    files: list[tuple[str, np.ndarray]],
+    width: int,
+    height: int,
+) -> bytes:
+    output = BytesIO()
+    used = set()
+    with ZipFile(output, "w", ZIP_STORED) as archive:
+        for name, mask in files:
+            archive.writestr(
+                _png_name(name, used),
+                make_png(mask, width, height),
+            )
     return output.getvalue()
 
 
@@ -42,6 +58,7 @@ def make_archive(
     job_id: str,
     width: int,
     files: list[tuple[str, BinaryIO]],
+    selected: list[np.ndarray | None],
     session: ModelSession,
 ) -> None:
     jobs.start(job_id, session.id, len(files))
@@ -52,7 +69,10 @@ def make_archive(
         with session.lock:
             model = session.segmenter.load()
             with ZipFile(path, "w", ZIP_STORED) as archive:
-                for index, (name, file) in enumerate(files, start=1):
+                for index, ((name, file), labels) in enumerate(
+                    zip(files, selected, strict=True),
+                    start=1,
+                ):
                     image = read_bytes(file.read())
                     height = max(1, round(image.shape[0] / image.shape[1] * width))
                     resized = np.asarray(
@@ -66,6 +86,7 @@ def make_archive(
                         session.segmenter,
                         session.refiner,
                         model,
+                        labels,
                     )
                     png = make_png(mask, image.shape[1], image.shape[0])
                     archive.writestr(
@@ -87,6 +108,18 @@ def _mask_name(name: str, used: set[str]) -> str:
     number = 2
     while value.lower() in used:
         value = f"{stem}_mask_{number}.png"
+        number += 1
+    used.add(value.lower())
+    return value
+
+
+def _png_name(name: str, used: set[str]) -> str:
+    path = Path(name.replace("\\", "/")).name
+    stem = Path(path).stem or "mask"
+    value = f"{stem}.png"
+    number = 2
+    while value.lower() in used:
+        value = f"{stem}_{number}.png"
         number += 1
     used.add(value.lower())
     return value

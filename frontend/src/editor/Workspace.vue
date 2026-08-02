@@ -31,11 +31,11 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  canDownloadResult: {
+  forceLabels: {
     type: Boolean,
-    default: false,
+    required: true,
   },
-  canDownloadLabels: {
+  canDownload: {
     type: Boolean,
     default: false,
   },
@@ -50,15 +50,16 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
-  'download-labels',
-  'download-result',
+  'download',
   'label-state-change',
+  'update:force-labels',
   'update:brush-size',
 ])
 
 const imageCanvasRef = ref(null)
 const labelCanvasRef = ref(null)
 const resultCanvasRef = ref(null)
+const resultLabelOutlineCanvasRef = ref(null)
 const resultLabelCanvasRef = ref(null)
 const rootRef = ref(null)
 const rendered = ref(false)
@@ -76,15 +77,22 @@ const resetLabels = (image) => {
     labelCanvasRef.value,
     resultLabelCanvasRef.value,
   )
-  emit('label-state-change', { image, hasLabels: false })
+  labelPainter.render(resultLabelOutlineCanvasRef.value, true)
+  emit('label-state-change', {
+    image,
+    hasLabels: false,
+    changed: true,
+    committed: true,
+  })
 }
 
-const emitLabelState = (changed = false) => {
+const emitLabelState = (changed = false, committed = false) => {
   if (!props.image) return
   emit('label-state-change', {
     image: props.image,
     hasLabels: labelPainter.hasLabels(),
     changed,
+    committed,
   })
 }
 
@@ -92,8 +100,15 @@ const drawResized = (source, sourceWidth, sourceHeight, file) => {
   const imageCanvas = imageCanvasRef.value
   const labelCanvas = labelCanvasRef.value
   const resultCanvas = resultCanvasRef.value
+  const resultLabelOutlineCanvas = resultLabelOutlineCanvasRef.value
   const resultLabelCanvas = resultLabelCanvasRef.value
-  if (!imageCanvas || !labelCanvas || !resultCanvas || !resultLabelCanvas) {
+  if (
+    !imageCanvas ||
+    !labelCanvas ||
+    !resultCanvas ||
+    !resultLabelOutlineCanvas ||
+    !resultLabelCanvas
+  ) {
     throw new Error('Could not find the image canvas.')
   }
 
@@ -106,6 +121,8 @@ const drawResized = (source, sourceWidth, sourceHeight, file) => {
   labelCanvas.height = height
   resultCanvas.width = width
   resultCanvas.height = height
+  resultLabelOutlineCanvas.width = width
+  resultLabelOutlineCanvas.height = height
   resultLabelCanvas.width = width
   resultLabelCanvas.height = height
 
@@ -120,6 +137,7 @@ const drawResized = (source, sourceWidth, sourceHeight, file) => {
 
   labelPainter.prepare(file, width, height)
   labelPainter.render(labelCanvas)
+  labelPainter.render(resultLabelOutlineCanvas, true)
   labelPainter.render(resultLabelCanvas, true)
   emitLabelState()
 }
@@ -132,19 +150,24 @@ const stampLabel = (point, radius, label) => {
     label,
     resultLabelCanvasRef.value,
   )
-  emitLabelState(true)
 }
 
-const paintLabelLine = (from, to, radius, label) => {
-  labelPainter.paintLine(
+const paintLabelLine = (from, control, to, radius, label) => {
+  labelPainter.paintCurve(
     labelCanvasRef.value,
     from,
+    control,
     to,
     radius,
     label,
     resultLabelCanvasRef.value,
   )
-  emitLabelState(true)
+}
+
+const finishLabelStroke = () => {
+  const changed = labelPainter.commitStroke()
+  labelPainter.render(resultLabelOutlineCanvasRef.value, true)
+  if (labelPainter.isReady()) emitLabelState(changed, true)
 }
 
 const makeInput = (canvasRef) =>
@@ -155,8 +178,10 @@ const makeInput = (canvasRef) =>
     getLabel: () => props.selectedLabel,
     canEdit: () =>
       rendered.value && !props.busy && labelPainter.isReady(),
+    start: labelPainter.beginStroke,
     stamp: stampLabel,
     line: paintLabelLine,
+    finish: finishLabelStroke,
   })
 
 const imageInput = makeInput(labelCanvasRef)
@@ -182,8 +207,8 @@ watch(
     const currentRenderId = ++renderId
     rendered.value = false
     errorMessage.value = ''
-    labelPainter.clear()
     for (const input of inputs) input.reset()
+    labelPainter.clear()
     if (rootRef.value) rootRef.value.scrollTop = 0
 
     if (!file) {
@@ -191,6 +216,7 @@ watch(
         imageCanvasRef.value,
         labelCanvasRef.value,
         resultCanvasRef.value,
+        resultLabelOutlineCanvasRef.value,
         resultLabelCanvasRef.value,
       ]) {
         if (canvas) {
@@ -318,6 +344,12 @@ defineExpose({ resetLabels })
               />
               <canvas
                 v-show="resultLabelsVisible"
+                ref="resultLabelOutlineCanvasRef"
+                class="workspace__result-label-outline"
+                aria-hidden="true"
+              ></canvas>
+              <canvas
+                v-show="resultLabelsVisible"
                 ref="resultLabelCanvasRef"
                 class="workspace__result-labels"
                 aria-hidden="true"
@@ -330,47 +362,51 @@ defineExpose({ resetLabels })
               ></span>
             </div>
           </div>
-          <div class="workspace__result-tools">
-            <div class="workspace__downloads">
-              <button
-                type="button"
-                :disabled="!canDownloadResult || busy || downloading"
-                @click="emit('download-result')"
-              >
-                Result Mask
-              </button>
-              <button
-                type="button"
-                :disabled="!canDownloadLabels || busy || downloading"
-                @click="emit('download-labels')"
-              >
-                Drawn Mask
-              </button>
-            </div>
-            <div class="workspace__view-controls">
-              <button
-                class="workspace__label-toggle"
-                :class="{
-                  'workspace__label-toggle--selected': uncertaintyVisible,
-                }"
-                type="button"
-                :aria-pressed="uncertaintyVisible"
-                @click="uncertaintyVisible = !uncertaintyVisible"
-              >
-                Uncertain
-              </button>
-              <button
-                class="workspace__label-toggle"
-                :class="{
-                  'workspace__label-toggle--selected': resultLabelsVisible,
-                }"
-                type="button"
-                :aria-pressed="resultLabelsVisible"
-                @click="resultLabelsVisible = !resultLabelsVisible"
-              >
-                Drawn
-              </button>
-              <label class="workspace__opacity">
+          <div class="workspace__result-controls">
+            <button
+              class="workspace__download"
+              type="button"
+              :disabled="!canDownload || busy || downloading"
+              @click="emit('download')"
+            >
+              {{ downloading ? 'Downloading' : 'Download' }}
+            </button>
+            <label class="workspace__switch-control">
+                <span>Override</span>
+                <input
+                  class="workspace__switch-input"
+                  type="checkbox"
+                  :checked="forceLabels"
+                  :disabled="busy || downloading"
+                  @change="emit('update:force-labels', $event.target.checked)"
+                />
+                <span class="workspace__switch-track" aria-hidden="true">
+                  <span></span>
+                </span>
+            </label>
+            <label class="workspace__switch-control">
+                <span>Uncertainty</span>
+                <input
+                  v-model="uncertaintyVisible"
+                  class="workspace__switch-input"
+                  type="checkbox"
+                />
+                <span class="workspace__switch-track" aria-hidden="true">
+                  <span></span>
+                </span>
+            </label>
+            <label class="workspace__switch-control">
+                <span>Edits</span>
+                <input
+                  v-model="resultLabelsVisible"
+                  class="workspace__switch-input"
+                  type="checkbox"
+                />
+                <span class="workspace__switch-track" aria-hidden="true">
+                  <span></span>
+                </span>
+            </label>
+            <label class="workspace__opacity">
                 <span>Opacity</span>
                 <input
                   v-model.number="resultOpacity"
@@ -378,10 +414,11 @@ defineExpose({ resetLabels })
                   min="0"
                   max="1"
                   step="0.05"
+                  :aria-valuetext="Math.round(resultOpacity * 100) + ' percent'"
+                  @pointerup="$event.currentTarget.blur()"
+                  @pointercancel="$event.currentTarget.blur()"
                 />
-                <span>{{ Math.round(resultOpacity * 100) }}%</span>
-              </label>
-            </div>
+            </label>
           </div>
         </div>
       </div>

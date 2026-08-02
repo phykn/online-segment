@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 
 import { filterNewImages, IMAGE_FILE_ACCEPT } from '../images/files'
+import ModelControls from '../editor/ModelControls.vue'
 import ImageList from './ImageList.vue'
 import MiniList from './MiniList.vue'
 import { useSidebarResize } from './resize'
@@ -35,12 +36,38 @@ const props = defineProps({
     type: Boolean,
     required: true,
   },
+  labeledCount: {
+    type: Number,
+    required: true,
+  },
+  sending: {
+    type: Boolean,
+    required: true,
+  },
+  refining: {
+    type: Boolean,
+    required: true,
+  },
+  canRefine: {
+    type: Boolean,
+    required: true,
+  },
+  modelError: {
+    type: String,
+    default: '',
+  },
+  sessionId: {
+    type: String,
+    default: '',
+  },
 })
 
 const emit = defineEmits([
   'add-images',
   'remove-image',
   'select-image',
+  'apply',
+  'refine',
   'download-all',
 ])
 
@@ -168,6 +195,18 @@ const handleDragLeave = (event) => {
 
     <div class="sidebar__footer">
       <div class="model-actions">
+        <ModelControls
+          :labeled-count="labeledCount"
+          :sending="sending"
+          :refining="refining"
+          :busy="busy"
+          :can-refine="canRefine"
+          @apply="emit('apply')"
+          @refine="emit('refine')"
+        />
+        <p v-if="modelError" class="model-error" role="alert">
+          {{ modelError }}
+        </p>
         <button
           class="model-button model-button--download"
           type="button"
@@ -193,6 +232,9 @@ const handleDragLeave = (event) => {
         <li><kbd>Z + Wheel</kbd><span>Zoom</span></li>
         <li><kbd>Right drag</kbd><span>Pan</span></li>
       </ul>
+      <span v-if="sessionId" class="session-id">
+        Session: {{ sessionId }}
+      </span>
     </div>
     </template>
 

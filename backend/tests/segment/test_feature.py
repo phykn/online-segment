@@ -10,7 +10,7 @@ from app.segment import feature
 
 class FeatureTests(unittest.TestCase):
     def test_sample_shape_and_values(self) -> None:
-        path = ROOT.parent / "frontend" / "asset" / "sample_1.jpg"
+        path = ROOT.parent / "frontend" / "asset" / "sample1.png"
         image = np.asarray(Image.open(path).convert("RGB"))
 
         stack = feature.make(image)

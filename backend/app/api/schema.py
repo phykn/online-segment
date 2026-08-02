@@ -27,6 +27,7 @@ class ApplyRequest(BaseModel):
 
 class PredRequest(BaseModel):
     image: str = Field(min_length=1)
+    labels: Mask | None = None
 
 
 class PredResponse(BaseModel):
@@ -41,5 +42,16 @@ class RefineRequest(BaseModel):
 
 class ExportRequest(BaseModel):
     mask: Mask
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+
+
+class ExportFile(BaseModel):
+    name: str = Field(min_length=1)
+    mask: Mask
+
+
+class ExportArchiveRequest(BaseModel):
+    files: list[ExportFile] = Field(min_length=1)
     width: int = Field(gt=0)
     height: int = Field(gt=0)

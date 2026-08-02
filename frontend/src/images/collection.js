@@ -43,6 +43,8 @@ export const useImages = () => {
   }
 
   const updateLabelState = ({ image, hasLabels }) => {
+    if (labeledImages.value.has(image) === hasLabels) return
+
     const nextLabeledImages = new Set(labeledImages.value)
     if (hasLabels) nextLabeledImages.add(image)
     else nextLabeledImages.delete(image)

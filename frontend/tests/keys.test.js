@@ -21,6 +21,10 @@ test('maps label, eraser, apply, and refine shortcuts', () => {
 
 test('ignores shortcuts only while typing', () => {
   assert.equal(isTyping({ tagName: 'INPUT' }), true)
+  assert.equal(isTyping({ tagName: 'INPUT', type: 'number' }), true)
+  assert.equal(isTyping({ tagName: 'INPUT', type: 'range' }), false)
+  assert.equal(isTyping({ tagName: 'INPUT', type: 'checkbox' }), false)
+  assert.equal(isTyping({ tagName: 'INPUT', type: 'file' }), false)
   assert.equal(isTyping({ tagName: 'TEXTAREA' }), true)
   assert.equal(isTyping({ tagName: 'SELECT' }), true)
   assert.equal(isTyping({ isContentEditable: true }), true)

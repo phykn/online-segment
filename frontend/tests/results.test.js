@@ -13,6 +13,16 @@ test('reuses a result for the same image, width, and revision', () => {
   assert.equal(cache.get(image, 1024, 2), null)
 })
 
+test('keeps the raw response needed to recompose cached results', () => {
+  const image = {}
+  const source = { mask: 'raw-mask' }
+  const cache = new ResultCache()
+
+  cache.set(image, 1024, 1, { source, mask: 'composed-mask' })
+
+  assert.equal(cache.get(image, 1024, 1).source, source)
+})
+
 test('invalidates cached results without changing the visible value', () => {
   const image = {}
   const cache = new ResultCache()
