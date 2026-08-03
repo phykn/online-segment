@@ -20,6 +20,7 @@ from app import actions
 from app.api.schema import (
     ApplyRequest,
     ExportArchiveRequest,
+    ExportJobRequest,
     ExportRequest,
     Mask,
     PredRequest,
@@ -107,8 +108,10 @@ def export_archive(payload: ExportArchiveRequest) -> Response:
 
 
 @router.post("/export/jobs", tags=["export"])
-def create_job(session: SessionDep) -> dict[str, str]:
-    return {"id": jobs.create(session.id)}
+def create_job(payload: ExportJobRequest, session: SessionDep) -> dict[str, str]:
+    job_id = jobs.create(session.id)
+    jobs.start(job_id, session.id, payload.total)
+    return {"id": job_id}
 
 
 @router.post(
@@ -120,28 +123,28 @@ def run_job(
     job_id: str,
     session: SessionDep,
     width: int = Form(gt=0),
-    files: list[UploadFile] = File(min_length=1),
-    labels: list[str] | None = Form(default=None),
+    file: UploadFile = File(),
+    label: str = Form(default="null"),
 ) -> None:
-    items = [(file.filename or "image", file.file) for file in files]
-    if labels is not None and len(labels) != len(files):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="file and mask counts differ.",
-        )
-
     try:
-        selected = [
-            None if value == "null" else decode(Mask.model_validate_json(value))
-            for value in labels or ["null"] * len(files)
-        ]
+        selected = (
+            None
+            if label == "null"
+            else decode(Mask.model_validate_json(label))
+        )
     except ValidationError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="invalid mask RLE.",
         ) from error
 
-    export_files.make_archive(job_id, width, items, selected, session)
+    export_files.append_archive(
+        job_id,
+        width,
+        (file.filename or "image", file.file),
+        selected,
+        session,
+    )
 
 
 @router.get("/export/jobs/{job_id}", tags=["export"])

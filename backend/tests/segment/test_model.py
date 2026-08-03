@@ -58,6 +58,20 @@ class ModelTests(unittest.TestCase):
         self.assertIs(result, made)
         self.assertTrue(np.array_equal(made.weights, weights))
 
+    def test_load_reuses_unchanged_model(self) -> None:
+        rng = np.random.default_rng(8)
+        x = rng.random((20, feature.COUNT), dtype=np.float32)
+        y = np.repeat(np.array([0, 1], dtype=np.int8), 10)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            segmenter = Segmenter(Path(tmp) / "model.joblib")
+            fitted = segmenter.fit(x, y)
+            with patch("app.segment.model.joblib.load") as load:
+                self.assertIs(segmenter.load(), fitted)
+                self.assertIs(segmenter.load(), fitted)
+
+        load.assert_not_called()
+
     def test_old_feature_config_requires_retraining(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "model.joblib"

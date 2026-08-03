@@ -59,3 +59,7 @@ class ExportArchiveRequest(BaseModel):
     files: list[ExportFile] = Field(min_length=1)
     width: int = Field(gt=0)
     height: int = Field(gt=0)
+
+
+class ExportJobRequest(BaseModel):
+    total: int = Field(gt=0)

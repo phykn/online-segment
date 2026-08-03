@@ -35,3 +35,26 @@ test('selects the neighboring image after removing the current image', () => {
   assert.deepEqual(images.value.map((image) => toRaw(image)), [second])
   assert.equal(toRaw(selectedImage.value), second)
 })
+
+test('clears every image, label membership, and selection', () => {
+  const first = {}
+  const second = {}
+  const {
+    images,
+    labeledImages,
+    selectedImage,
+    selectedIndex,
+    addImages,
+    clearImages,
+    updateLabelState,
+  } = useImages()
+
+  addImages([first, second])
+  updateLabelState({ image: first, hasLabels: true })
+  clearImages()
+
+  assert.deepEqual(images.value, [])
+  assert.equal(labeledImages.value.size, 0)
+  assert.equal(selectedImage.value, null)
+  assert.equal(selectedIndex.value, -1)
+})

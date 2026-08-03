@@ -10,13 +10,16 @@ import {
 } from '../src/editor/keys.js'
 
 test('maps label, eraser, apply, and refine shortcuts', () => {
-  assert.deepEqual(keyAction('Digit0'), { name: 'label', value: 0 })
-  assert.deepEqual(keyAction('Numpad3'), { name: 'label', value: 3 })
-  assert.deepEqual(keyAction('Delete'), { name: 'eraser' })
+  assert.deepEqual(keyAction('KeyQ'), { name: 'label', value: 0 })
+  assert.deepEqual(keyAction('KeyW'), { name: 'label', value: 1 })
+  assert.deepEqual(keyAction('KeyE'), { name: 'label', value: 2 })
+  assert.deepEqual(keyAction('KeyR'), { name: 'label', value: 3 })
+  assert.deepEqual(keyAction('KeyT'), { name: 'eraser' })
   assert.deepEqual(keyAction('Space'), { name: 'apply' })
   assert.deepEqual(keyAction('Enter'), { name: 'refine' })
   assert.deepEqual(keyAction('NumpadEnter'), { name: 'refine' })
-  assert.equal(keyAction('Digit4'), null)
+  assert.equal(keyAction('Digit0'), null)
+  assert.equal(keyAction('Delete'), null)
 })
 
 test('ignores shortcuts only while typing', () => {

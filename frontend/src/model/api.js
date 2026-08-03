@@ -1,8 +1,8 @@
-import { getLabelMaskSnapshot } from '../editor/masks'
-import { decodeImage } from '../images/decode'
-import { setOriginalImageSize } from '../images/metadata'
-import { encodeMask } from './masks'
-import { sessionFetch } from './session'
+import { getLabelMaskSnapshot } from '../editor/masks.js'
+import { decodeImage } from '../images/decode.js'
+import { setOriginalImageSize } from '../images/metadata.js'
+import { encodeMask } from './masks.js'
+import { sessionFetch } from './session.js'
 
 const API_URL = '/api'
 
@@ -112,25 +112,24 @@ export const exportMasks = async (files, width, height) => {
   return response.blob()
 }
 
-const createExport = async () => {
-  const response = await sessionFetch('/export/jobs', { method: 'POST' })
+const createExport = async (total) => {
+  const response = await sessionFetch('/export/jobs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ total }),
+  })
   if (!response.ok) {
     throw new Error(await readError(response, 'Could not start the export.'))
   }
   return response.json()
 }
 
-const runExport = async (id, files, width, forceLabels) => {
+const runExport = async (id, file, width, forceLabels) => {
   const body = new FormData()
   body.append('width', String(width))
-  for (const file of files) {
-    const labels = forceLabels ? getLabelMaskSnapshot(file) : null
-    body.append('files', file, file.name)
-    body.append(
-      'labels',
-      JSON.stringify(labels ? encodeMask(labels) : null),
-    )
-  }
+  const labels = forceLabels ? getLabelMaskSnapshot(file) : null
+  body.append('file', file, file.name)
+  body.append('label', JSON.stringify(labels ? encodeMask(labels) : null))
 
   const response = await sessionFetch(`/export/jobs/${id}`, {
     method: 'POST',
@@ -157,30 +156,16 @@ const getExportFile = async (id) => {
   return response.blob()
 }
 
-const wait = () => new Promise((resolve) => setTimeout(resolve, 200))
-
 export const exportAll = async (files, width, forceLabels, onProgress) => {
-  const { id } = await createExport()
-  let taskError = null
-  const task = runExport(id, files, width, forceLabels).catch((error) => {
-    taskError = error
-  })
-
-  while (true) {
-    await wait()
-    if (taskError) throw taskError
-
-    const state = await getExport(id)
-    if (state.total > 0) {
-      onProgress(Math.round((state.done / state.total) * 100))
-    }
-    if (state.status === 'error') {
-      throw new Error(state.error || 'Could not export the images.')
-    }
-    if (state.status === 'ready') break
+  const { id } = await createExport(files.length)
+  for (let index = 0; index < files.length; index += 1) {
+    await runExport(id, files[index], width, forceLabels)
+    onProgress(Math.round(((index + 1) / files.length) * 100))
   }
 
-  await task
-  onProgress(100)
+  const state = await getExport(id)
+  if (state.status !== 'ready') {
+    throw new Error(state.error || 'Could not export the images.')
+  }
   return getExportFile(id)
 }

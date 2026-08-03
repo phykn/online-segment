@@ -18,6 +18,7 @@ class Segmenter:
     def __init__(self, path: Path):
         self.path = path
         self.lock = RLock()
+        self._cache = {}
 
     def fit(
         self,
@@ -43,6 +44,9 @@ class Segmenter:
                     status_code=status.HTTP_409_CONFLICT,
                     detail="model is not trained.",
                 )
+            stamp = self.path.stat().st_mtime_ns
+            if self._cache.get("stamp") == stamp:
+                return self._cache["model"]
             try:
                 saved = joblib.load(self.path)
             except Exception as error:
@@ -77,6 +81,7 @@ class Segmenter:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="model must be retrained for refinement.",
             )
+        self._cache.update(stamp=stamp, model=classifier)
         return classifier
 
     def prob(
@@ -115,5 +120,9 @@ class Segmenter:
                 tmp,
             )
             tmp.replace(self.path)
+            self._cache.update(
+                stamp=self.path.stat().st_mtime_ns,
+                model=classifier,
+            )
         finally:
             tmp.unlink(missing_ok=True)

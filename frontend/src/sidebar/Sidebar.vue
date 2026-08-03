@@ -64,6 +64,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'add-images',
+  'clear-images',
   'remove-image',
   'select-image',
   'apply',
@@ -195,6 +196,14 @@ const handleDragLeave = (event) => {
 
     <div class="sidebar__footer">
       <div class="model-actions">
+        <button
+          class="model-button"
+          type="button"
+          :disabled="images.length === 0 || props.busy"
+          @click="emit('clear-images')"
+        >
+          <span>Clear All Images</span>
+        </button>
         <ModelControls
           :labeled-count="labeledCount"
           :sending="sending"
@@ -226,11 +235,11 @@ const handleDragLeave = (event) => {
       </div>
 
       <ul class="shortcut-list" aria-label="Canvas controls">
-        <li><kbd>0–3 Keys</kbd><span>Label</span></li>
-        <li><kbd>Delete</kbd><span>Eraser</span></li>
+        <li><kbd>Q W E R</kbd><span>Label</span></li>
+        <li><kbd>T</kbd><span>Eraser</span></li>
         <li><kbd>B + Wheel</kbd><span>Brush size</span></li>
         <li><kbd>Z + Wheel</kbd><span>Zoom</span></li>
-        <li><kbd>Right drag</kbd><span>Pan</span></li>
+        <li><kbd>Middle drag</kbd><span>Pan</span></li>
       </ul>
       <span v-if="sessionId" class="session-id">
         Session: {{ sessionId }}

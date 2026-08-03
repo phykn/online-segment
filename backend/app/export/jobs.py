@@ -40,6 +40,17 @@ class JobStore:
         with self.lock:
             self._get(job_id, owner)["done"] = done
 
+    def advance(self, job_id: str, owner: str) -> tuple[int, int]:
+        with self.lock:
+            job = self._get(job_id, owner)
+            if job["status"] != "running" or job["done"] >= job["total"]:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="export job is not accepting images.",
+                )
+            job["done"] += 1
+            return job["done"], job["total"]
+
     def finish(self, job_id: str, owner: str, path: str) -> None:
         with self.lock:
             job = self._get(job_id, owner)

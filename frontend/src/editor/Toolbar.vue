@@ -68,11 +68,11 @@ const commitWidth = () => {
             type="button"
             :disabled="busy"
             :style="{ backgroundColor: label.color }"
-            :aria-label="'Label ' + label.value"
+            :aria-label="'Label ' + label.key"
             :aria-pressed="label.value === selectedLabel"
             @click="emit('update:selected-label', label.value)"
           >
-            {{ label.value }}
+            {{ label.key }}
           </button>
           <button
             class="label-option__button label-option__eraser"

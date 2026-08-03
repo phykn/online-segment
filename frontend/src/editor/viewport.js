@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 
-const RIGHT_BUTTON = 2
+const MIDDLE_BUTTON = 1
 const MIN_ZOOM = 1
 const MAX_ZOOM = 8
 const ZOOM_STEP = 0.1
@@ -113,7 +113,7 @@ export const useViewport = (canvasRef, getBrushSize) => {
   }
 
   const startPan = (event) => {
-    if (event.button !== RIGHT_BUTTON) return false
+    if (event.button !== MIDDLE_BUTTON) return false
 
     event.preventDefault()
     hideCursor()

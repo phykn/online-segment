@@ -38,6 +38,12 @@ export const useImages = () => {
     }
   }
 
+  const clearImages = () => {
+    images.value = []
+    labeledImages.value = new Set()
+    selectedIndex.value = -1
+  }
+
   const selectImage = (index) => {
     if (images.value[index]) selectedIndex.value = index
   }
@@ -57,6 +63,7 @@ export const useImages = () => {
     selectedImage,
     selectedIndex,
     addImages,
+    clearImages,
     removeImage,
     selectImage,
     updateLabelState,

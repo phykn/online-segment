@@ -54,47 +54,48 @@ def make_mask_archive(
     return output.getvalue()
 
 
-def make_archive(
+def append_archive(
     job_id: str,
     width: int,
-    files: list[tuple[str, BinaryIO]],
-    selected: list[np.ndarray | None],
+    file: tuple[str, BinaryIO],
+    selected: np.ndarray | None,
     session: ModelSession,
 ) -> None:
-    jobs.start(job_id, session.id, len(files))
     path = jobs.temp_path(job_id)
-    used = set()
+    state = jobs.get(job_id, session.id)
+    if state["status"] != "running" or state["done"] >= state["total"]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="export job is not accepting images.",
+        )
 
     try:
         with session.lock:
             model = session.segmenter.load()
-            with ZipFile(path, "w", ZIP_STORED) as archive:
-                for index, ((name, file), labels) in enumerate(
-                    zip(files, selected, strict=True),
-                    start=1,
-                ):
-                    image = read_bytes(file.read())
-                    height = max(1, round(image.shape[0] / image.shape[1] * width))
-                    resized = np.asarray(
-                        Image.fromarray(image).resize(
-                            (width, height),
-                            Image.Resampling.LANCZOS,
-                        )
-                    )
-                    mask = actions.predict(
-                        resized,
-                        session.segmenter,
-                        session.refiner,
-                        model,
-                        labels,
-                    )
-                    png = make_png(mask, image.shape[1], image.shape[0])
-                    archive.writestr(
-                        _mask_name(name or f"image_{index}", used),
-                        png,
-                    )
-                    jobs.update(job_id, session.id, index)
-        jobs.finish(job_id, session.id, path)
+            name, source = file
+            image = read_bytes(source.read())
+            height = max(1, round(image.shape[0] / image.shape[1] * width))
+            resized = np.asarray(
+                Image.fromarray(image).resize(
+                    (width, height),
+                    Image.Resampling.LANCZOS,
+                )
+            )
+            mask = actions.predict(
+                resized,
+                session.segmenter,
+                session.refiner,
+                model,
+                selected,
+            )
+            png = make_png(mask, image.shape[1], image.shape[0])
+            with ZipFile(path, "a", ZIP_STORED) as archive:
+                used = {value.lower() for value in archive.namelist()}
+                archive.writestr(_mask_name(name, used), png)
+
+            done, total = jobs.advance(job_id, session.id)
+            if done == total:
+                jobs.finish(job_id, session.id, path)
     except Exception as error:
         Path(path).unlink(missing_ok=True)
         jobs.fail(job_id, session.id, str(error))

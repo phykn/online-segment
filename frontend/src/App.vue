@@ -30,6 +30,7 @@ const {
   selectedImage,
   selectedIndex,
   addImages,
+  clearImages,
   removeImage,
   selectImage,
   updateLabelState,
@@ -135,6 +136,14 @@ const removeAt = (index) => {
   }
 }
 
+const clearAllImages = () => {
+  if (busy.value || images.value.length === 0) return
+
+  clearImages()
+  resetModel()
+  clearError()
+}
+
 const selectAt = (index) => {
   const image = images.value[index]
   if (!image || image === selectedImage.value) return
@@ -190,6 +199,7 @@ const handleLabelState = (state) => {
       :model-error="modelError"
       :session-id="sessionId"
       @add-images="addImages"
+      @clear-images="clearAllImages"
       @remove-image="removeAt"
       @select-image="selectAt"
       @apply="apply"
