@@ -10,7 +10,7 @@ const namedBlob = (name, value) => {
   return blob
 }
 
-test('exportAll uploads and processes one image per request', async () => {
+test('exportAll uploads images in bounded batches', async () => {
   resetSession()
   const calls = []
   const progress = []
@@ -27,7 +27,7 @@ test('exportAll uploads and processes one image per request', async () => {
       return new Response(null, { status: 204 })
     }
     if (url === '/api/export/jobs/export-a') {
-      return Response.json({ status: 'ready', done: 2, total: 2, error: '' })
+      return Response.json({ status: 'ready', done: 10, total: 10, error: '' })
     }
     if (url === '/api/export/jobs/export-a/file') {
       return new Response(new Blob(['zip']))
@@ -37,7 +37,9 @@ test('exportAll uploads and processes one image per request', async () => {
 
   try {
     const result = await exportAll(
-      [namedBlob('one.png', 'one'), namedBlob('two.png', 'two')],
+      Array.from({ length: 10 }, (_, index) =>
+        namedBlob(`${index + 1}.png`, String(index + 1)),
+      ),
       512,
       false,
       (value) => progress.push(value),
@@ -49,16 +51,16 @@ test('exportAll uploads and processes one image per request', async () => {
   }
 
   const create = calls.find(([url]) => url === '/api/export/jobs')
-  assert.deepEqual(JSON.parse(create[1].body), { total: 2 })
+  assert.deepEqual(JSON.parse(create[1].body), { total: 10 })
 
   const uploads = calls.filter(
     ([url, options]) =>
       url === '/api/export/jobs/export-a' && options.method === 'POST',
   )
   assert.equal(uploads.length, 2)
-  assert.equal(uploads[0][1].body.getAll('file').length, 1)
-  assert.equal(uploads[0][1].body.get('file').name, 'one.png')
-  assert.equal(uploads[1][1].body.getAll('file').length, 1)
-  assert.equal(uploads[1][1].body.get('file').name, 'two.png')
-  assert.deepEqual(progress, [50, 100])
+  assert.equal(uploads[0][1].body.getAll('files').length, 8)
+  assert.equal(uploads[0][1].body.getAll('files')[0].name, '1.png')
+  assert.equal(uploads[1][1].body.getAll('files').length, 2)
+  assert.equal(uploads[1][1].body.getAll('files')[1].name, '10.png')
+  assert.deepEqual(progress, [80, 100])
 })

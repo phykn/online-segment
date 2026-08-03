@@ -1,7 +1,9 @@
 <script setup>
+import { ref } from 'vue'
+
 import { formatFileSize, getFileKey } from '../images/files'
 
-defineProps({
+const props = defineProps({
   images: {
     type: Array,
     required: true,
@@ -20,11 +22,35 @@ defineProps({
   },
 })
 
-const emit = defineEmits(['select', 'remove'])
+const emit = defineEmits(['add-files', 'select', 'remove'])
+const isDragging = ref(false)
+
+const handleDragEnter = () => {
+  if (!props.busy) isDragging.value = true
+}
+
+const handleDragLeave = (event) => {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    isDragging.value = false
+  }
+}
+
+const handleDrop = (event) => {
+  isDragging.value = false
+  if (!props.busy) emit('add-files', event.dataTransfer.files)
+}
 </script>
 
 <template>
-  <ul v-if="images.length" class="image-list">
+  <ul
+    v-if="images.length"
+    class="image-list"
+    :class="{ 'image-list--dragging': isDragging }"
+    @dragenter.prevent="handleDragEnter"
+    @dragover.prevent
+    @dragleave.prevent="handleDragLeave"
+    @drop.prevent.stop="handleDrop"
+  >
     <li
       v-for="(image, index) in images"
       :key="getFileKey(image)"

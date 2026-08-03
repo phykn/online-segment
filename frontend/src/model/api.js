@@ -5,6 +5,8 @@ import { encodeMask } from './masks.js'
 import { sessionFetch } from './session.js'
 
 const API_URL = '/api'
+const EXPORT_BATCH_FILE_LIMIT = 8
+const EXPORT_BATCH_BYTE_LIMIT = 32 * 1024 * 1024
 
 const readError = async (response, fallback) => {
   try {
@@ -124,12 +126,14 @@ const createExport = async (total) => {
   return response.json()
 }
 
-const runExport = async (id, file, width, forceLabels) => {
+const runExport = async (id, files, width, forceLabels) => {
   const body = new FormData()
   body.append('width', String(width))
-  const labels = forceLabels ? getLabelMaskSnapshot(file) : null
-  body.append('file', file, file.name)
-  body.append('label', JSON.stringify(labels ? encodeMask(labels) : null))
+  for (const file of files) {
+    const labels = forceLabels ? getLabelMaskSnapshot(file) : null
+    body.append('files', file, file.name)
+    body.append('labels', JSON.stringify(labels ? encodeMask(labels) : null))
+  }
 
   const response = await sessionFetch(`/export/jobs/${id}`, {
     method: 'POST',
@@ -138,6 +142,28 @@ const runExport = async (id, file, width, forceLabels) => {
   if (!response.ok) {
     throw new Error(await readError(response, 'Could not export the images.'))
   }
+}
+
+const makeExportBatches = (files) => {
+  const batches = []
+  let batch = []
+  let bytes = 0
+
+  for (const file of files) {
+    const exceedsLimit =
+      batch.length > 0 &&
+      (batch.length >= EXPORT_BATCH_FILE_LIMIT ||
+        bytes + file.size > EXPORT_BATCH_BYTE_LIMIT)
+    if (exceedsLimit) {
+      batches.push(batch)
+      batch = []
+      bytes = 0
+    }
+    batch.push(file)
+    bytes += file.size
+  }
+  if (batch.length) batches.push(batch)
+  return batches
 }
 
 const getExport = async (id) => {
@@ -158,9 +184,11 @@ const getExportFile = async (id) => {
 
 export const exportAll = async (files, width, forceLabels, onProgress) => {
   const { id } = await createExport(files.length)
-  for (let index = 0; index < files.length; index += 1) {
-    await runExport(id, files[index], width, forceLabels)
-    onProgress(Math.round(((index + 1) / files.length) * 100))
+  let done = 0
+  for (const batch of makeExportBatches(files)) {
+    await runExport(id, batch, width, forceLabels)
+    done += batch.length
+    onProgress(Math.round((done / files.length) * 100))
   }
 
   const state = await getExport(id)

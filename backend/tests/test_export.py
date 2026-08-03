@@ -10,7 +10,7 @@ from zipfile import ZipFile
 import numpy as np
 from PIL import Image
 
-from app.export.files import append_archive, make_mask_archive, make_png
+from app.export.files import append_archive_batch, make_mask_archive, make_png
 from app.export.jobs import JobStore
 
 
@@ -70,12 +70,15 @@ class ExportTests(unittest.TestCase):
                     return_value=np.zeros((1, 2), dtype=np.int8),
                 ),
             ):
-                append_archive(
-                    job_id, 2, ("same.png", BytesIO(image_bytes)), None, session
-                )
-                self.assertEqual(store.get(job_id, session.id)["done"], 1)
-                append_archive(
-                    job_id, 2, ("same.png", BytesIO(image_bytes)), None, session
+                append_archive_batch(
+                    job_id,
+                    2,
+                    [
+                        ("same.png", BytesIO(image_bytes)),
+                        ("same.png", BytesIO(image_bytes)),
+                    ],
+                    [None, None],
+                    session,
                 )
 
             self.assertEqual(store.get(job_id, session.id)["status"], "ready")
@@ -84,7 +87,7 @@ class ExportTests(unittest.TestCase):
                     archive.namelist(),
                     ["same_mask.png", "same_mask_2.png"],
                 )
-            self.assertEqual(session.segmenter.load.call_count, 2)
+            self.assertEqual(session.segmenter.load.call_count, 1)
 
 
 if __name__ == "__main__":

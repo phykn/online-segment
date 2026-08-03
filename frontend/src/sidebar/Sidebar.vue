@@ -190,6 +190,7 @@ const handleDragLeave = (event) => {
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
       :busy="props.busy"
+      @add-files="addFiles"
       @select="emit('select-image', $event)"
       @remove="emit('remove-image', $event)"
     />

@@ -123,25 +123,30 @@ def run_job(
     job_id: str,
     session: SessionDep,
     width: int = Form(gt=0),
-    file: UploadFile = File(),
-    label: str = Form(default="null"),
+    files: list[UploadFile] = File(min_length=1),
+    labels: list[str] | None = Form(default=None),
 ) -> None:
-    try:
-        selected = (
-            None
-            if label == "null"
-            else decode(Mask.model_validate_json(label))
+    if labels is not None and len(labels) != len(files):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="file and mask counts differ.",
         )
+
+    try:
+        selected = [
+            None if value == "null" else decode(Mask.model_validate_json(value))
+            for value in labels or ["null"] * len(files)
+        ]
     except ValidationError as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="invalid mask RLE.",
         ) from error
 
-    export_files.append_archive(
+    export_files.append_archive_batch(
         job_id,
         width,
-        (file.filename or "image", file.file),
+        [(file.filename or "image", file.file) for file in files],
         selected,
         session,
     )
