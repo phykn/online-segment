@@ -8,6 +8,7 @@ class ConfigTests(unittest.TestCase):
     def test_yaml_config_is_loaded_without_versions(self) -> None:
         self.assertEqual(config.refine.patch, 256)
         self.assertEqual(config.model.n_estimators, 200)
+        self.assertEqual(config.model.balance_floor, 256)
         self.assertEqual(config.session.max_age, 3600)
         self.assertEqual(feature.COUNT, 15)
         self.assertNotIn("version", feature.config())

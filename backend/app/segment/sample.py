@@ -1,4 +1,15 @@
+import math
+
 import numpy as np
+
+
+def log_limit(count: int, reference: int, maximum: int) -> int:
+    """Scale a class quota logarithmically above the balance reference."""
+    if count <= reference:
+        return min(count, maximum)
+
+    scaled = round(reference * (1.0 + math.log(count / reference)))
+    return min(count, maximum, scaled)
 
 
 def quotas(counts: list[int], total: int) -> list[int]:
@@ -8,7 +19,7 @@ def quotas(counts: list[int], total: int) -> list[int]:
 
     while remaining > 0:
         active = np.flatnonzero(result < values)
-        share = max(1, (remaining + active.size - 1) // active.size)
+        share = max(1, remaining // active.size)
         for idx in active:
             added = min(share, int(values[idx] - result[idx]), remaining)
             result[idx] += added

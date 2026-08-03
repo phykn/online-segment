@@ -23,11 +23,18 @@ class ModelConfig(BaseModel):
     min_samples_leaf: int = Field(gt=0)
     class_weight: str = Field(min_length=1)
     max_per_class: int = Field(gt=0)
+    balance_floor: int = Field(gt=0)
     edge_ratio: float = Field(ge=0.0, le=1.0)
     edge_quantile: float = Field(ge=0.0, lt=1.0)
     uncertain_threshold: float = Field(gt=0.0, lt=1.0)
     random_state: int
     n_jobs: int
+
+    @model_validator(mode="after")
+    def validate_sampling(self):
+        if self.balance_floor > self.max_per_class:
+            raise ValueError("balance_floor must not exceed max_per_class")
+        return self
 
 
 class FeatureConfig(BaseModel):

@@ -76,15 +76,22 @@ export const predict = async (file, width) => {
   return response.json()
 }
 
-export const refine = async (images, target) => {
-  const [items, targetItem] = await Promise.all([
-    Promise.all(images.map(makeItem)),
-    makeItem(target),
-  ])
+const makeRefineItem = async (file, width) => {
+  const mask = getLabelMaskSnapshot(file)
+  return {
+    image: await encodeImage(file, width),
+    mask: mask ? encodeMask(mask) : null,
+  }
+}
+
+export const refine = async (images, width) => {
+  const items = await Promise.all(
+    images.map((image) => makeRefineItem(image, width)),
+  )
   const response = await sessionFetch('/refine', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ images: items, target: targetItem }),
+    body: JSON.stringify({ images: items }),
   })
 
   if (!response.ok) {

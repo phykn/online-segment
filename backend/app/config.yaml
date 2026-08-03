@@ -17,6 +17,7 @@ model:
   min_samples_leaf: 2
   class_weight: balanced_subsample
   max_per_class: 10000
+  balance_floor: 256
   edge_ratio: 0.5
   edge_quantile: 0.75
   uncertain_threshold: 0.7

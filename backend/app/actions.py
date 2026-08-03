@@ -36,14 +36,18 @@ def make_data(items: list[TrainItem]) -> tuple[np.ndarray, np.ndarray]:
             value = int(label)
             counts[value] = counts.get(value, 0) + int(np.sum(mask == value))
 
-    target = min(cfg.max_per_class, *counts.values())
+    reference = max(min(counts.values()), cfg.balance_floor)
+    targets = {
+        label: sample.log_limit(count, reference, cfg.max_per_class)
+        for label, count in counts.items()
+    }
     xs = []
     ys = []
     for label in sorted(counts):
         available = [int(np.sum(mask == label)) for _, mask, _ in records]
         for (stack, mask, score), limit in zip(
             records,
-            sample.quotas(available, target),
+            sample.quotas(available, targets[label]),
         ):
             if limit == 0:
                 continue

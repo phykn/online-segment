@@ -83,7 +83,6 @@ def refine_model(payload: RefineRequest, session: SessionDep) -> None:
     with session.lock:
         refine.fit(
             payload.images,
-            payload.target,
             session.segmenter,
             session.refiner,
         )

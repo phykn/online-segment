@@ -1,6 +1,7 @@
 import unittest
 
 from app.api.router import create_session, health_check, read_session
+from app.api.schema import RefineRequest
 from app.main import app
 from app.session import sessions
 
@@ -43,6 +44,14 @@ class RouterTests(unittest.TestCase):
         paths = set(app.openapi()["paths"])
 
         self.assertNotIn("/api/training-data", paths)
+
+    def test_refine_accepts_unlabeled_images_without_a_target(self) -> None:
+        payload = RefineRequest.model_validate(
+            {"images": [{"image": "encoded", "mask": None}]}
+        )
+
+        self.assertIsNone(payload.images[0].mask)
+        self.assertNotIn("target", payload.model_dump())
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ import {
   saveBlob,
 } from './output'
 import { isCurrent, ResultCache } from './results'
+import { selectRefineImages } from './refine'
 
 export const useModel = ({
   images,
@@ -36,6 +37,7 @@ export const useModel = ({
   const trained = ref(false)
   const forceLabels = ref(true)
   const revision = ref(0)
+  const refineRound = ref(0)
   const error = ref('')
   const result = ref(null)
   const results = new ResultCache()
@@ -179,6 +181,7 @@ export const useModel = ({
     try {
       await applyApi(getTrainImages(current))
       trained.value = true
+      refineRound.value = 0
       updateRevision()
       if (!current || !images.value.includes(current)) return
       if (resizeWidth.value !== width) return
@@ -198,7 +201,14 @@ export const useModel = ({
     refining.value = true
     clearError()
     try {
-      await refineApi(getTrainImages(), current)
+      const refineImages = selectRefineImages(
+        images.value,
+        labeledImages.value,
+        current,
+        refineRound.value,
+      )
+      await refineApi(refineImages, width)
+      refineRound.value += 1
       updateRevision()
       if (!images.value.includes(current) || resizeWidth.value !== width) return
       await predict(current, width)

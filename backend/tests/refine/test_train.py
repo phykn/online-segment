@@ -13,7 +13,8 @@ from app.refine.model import Refiner
 
 class TrainTests(unittest.TestCase):
     def test_fit_caps_and_downweights_pseudo_labels(self) -> None:
-        target = SimpleNamespace(image="target")
+        labeled = SimpleNamespace(image="labeled", mask=object())
+        unlabeled = SimpleNamespace(image="unlabeled", mask=None)
         image = np.zeros((4, 5, 3), dtype=np.uint8)
         mask = np.full((4, 5), -1, dtype=np.int8)
         mask[0, 0] = 0
@@ -30,35 +31,39 @@ class TrainTests(unittest.TestCase):
 
         with (
             patch.object(train, "read_item", return_value=(image, mask)),
+            patch.object(train, "read_image", return_value=image),
             patch.object(
                 train,
-                "_select",
-                return_value=(
-                    np.array([5, 15]),
-                    np.array([0, 1], dtype=np.int8),
-                ),
+                "_select_many",
+                return_value=[
+                    (np.array([5]), np.array([0], dtype=np.int8)),
+                    (np.array([15]), np.array([1], dtype=np.int8)),
+                ],
             ) as select,
             patch.object(train, "_learn") as learn,
         ):
-            train.fit([target], target, segmenter, refiner)
+            train.fit([labeled, unlabeled], segmenter, refiner)
 
-        self.assertEqual(select.call_args.args[3], {0: 1, 1: 1})
+        self.assertEqual(select.call_args.args[2], {0: 1, 1: 1})
         data, classes, rf_id, used_refiner = learn.call_args.args
-        labels = data[0][2].ravel()
-        weights = data[0][3].ravel()
-        manual = data[0][4].ravel()
-        self.assertEqual(labels[0], 0)
-        self.assertEqual(labels[19], 1)
-        self.assertEqual(labels[5], 0)
-        self.assertEqual(labels[15], 1)
-        self.assertEqual(weights[0], 1.0)
-        self.assertEqual(weights[19], 1.0)
-        self.assertEqual(weights[5], train.cfg.pseudo_weight)
-        self.assertEqual(weights[15], train.cfg.pseudo_weight)
-        self.assertTrue(manual[0])
-        self.assertTrue(manual[19])
-        self.assertFalse(manual[5])
-        self.assertFalse(manual[15])
+        first_labels = data[0][2].ravel()
+        first_weights = data[0][3].ravel()
+        first_manual = data[0][4].ravel()
+        second_labels = data[1][2].ravel()
+        second_weights = data[1][3].ravel()
+        second_manual = data[1][4].ravel()
+        self.assertEqual(first_labels[0], 0)
+        self.assertEqual(first_labels[19], 1)
+        self.assertEqual(first_labels[5], 0)
+        self.assertEqual(second_labels[15], 1)
+        self.assertEqual(first_weights[0], 1.0)
+        self.assertEqual(first_weights[19], 1.0)
+        self.assertEqual(first_weights[5], train.cfg.pseudo_weight)
+        self.assertEqual(second_weights[15], train.cfg.pseudo_weight)
+        self.assertTrue(first_manual[0])
+        self.assertTrue(first_manual[19])
+        self.assertFalse(first_manual[5])
+        self.assertFalse(second_manual.any())
         self.assertTrue(np.array_equal(classes, classifier.classes_))
         self.assertEqual(rf_id, "rf-id")
         self.assertIs(used_refiner, refiner)
@@ -191,6 +196,22 @@ class TrainTests(unittest.TestCase):
 
         self.assertEqual(np.sum(labels == 0), 5)
         self.assertEqual(np.sum(labels == 1), 5)
+
+    def test_select_many_spreads_pseudo_labels_across_images(self) -> None:
+        classes = np.array([0], dtype=np.int8)
+        records = [
+            (
+                np.zeros((4, 4, 3), dtype=np.uint8),
+                np.full((4, 4), -1, dtype=np.int8),
+                np.ones((4, 4, 1), dtype=np.float32),
+            )
+            for _ in range(2)
+        ]
+
+        selected = train._select_many(records, classes, {0: 4})
+
+        self.assertEqual([indices.size for indices, _ in selected], [2, 2])
+        self.assertTrue(all((labels == 0).all() for _, labels in selected))
 
     def test_select_balances_three_labels(self) -> None:
         mask = np.full((10, 30), -1, dtype=np.int8)

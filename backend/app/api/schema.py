@@ -21,6 +21,11 @@ class TrainItem(BaseModel):
     mask: Mask
 
 
+class RefineItem(BaseModel):
+    image: str = Field(min_length=1)
+    mask: Mask | None = None
+
+
 class ApplyRequest(BaseModel):
     images: list[TrainItem] = Field(min_length=1)
 
@@ -36,8 +41,7 @@ class PredResponse(BaseModel):
 
 
 class RefineRequest(BaseModel):
-    images: list[TrainItem] = Field(min_length=1)
-    target: TrainItem
+    images: list[RefineItem] = Field(min_length=1)
 
 
 class ExportRequest(BaseModel):

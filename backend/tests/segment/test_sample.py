@@ -6,11 +6,27 @@ from app.segment import sample
 
 
 class SampleTests(unittest.TestCase):
+    def test_log_limit_preserves_more_abundant_classes(self) -> None:
+        values = [
+            sample.log_limit(count, 2_000, 10_000)
+            for count in (20_000, 7_000, 2_000)
+        ]
+
+        self.assertEqual(values, [6_605, 4_506, 2_000])
+
+    def test_log_limit_uses_all_small_classes_and_respects_cap(self) -> None:
+        self.assertEqual(sample.log_limit(10, 256, 10_000), 10)
+        self.assertEqual(sample.log_limit(1_000_000, 256, 10_000), 2_373)
+        self.assertEqual(sample.log_limit(20_000, 2_000, 5_000), 5_000)
+
     def test_quotas_spread_points_across_images(self) -> None:
         values = sample.quotas([100, 100, 2], 12)
 
         self.assertEqual(sum(values), 12)
         self.assertEqual(values, [5, 5, 2])
+
+    def test_quotas_keep_equal_groups_within_one_sample(self) -> None:
+        self.assertEqual(sample.quotas([100, 100, 100], 10), [4, 3, 3])
 
     def test_spatial_covers_the_image(self) -> None:
         mask = np.ones((8, 8), dtype=bool)

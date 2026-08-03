@@ -4,11 +4,11 @@ Pixel-wise annotation is accurate but costly, while fully automatic segmentation
 
 ## Multiscale random forest
 
-Each pixel is represented by multiscale intensity, gradient, Hessian, and Laplacian-of-Gaussian features. A random forest learns from annotated pixels only, using per-class quotas to balance labels across images and edge-guided spatial sampling to retain informative boundaries. Its class probabilities are adjusted near image edges before the most probable label is selected.
+Each pixel is represented by multiscale intensity, gradient, Hessian, and Laplacian-of-Gaussian features. A random forest learns from annotated pixels only, using logarithmically scaled per-class quotas to preserve more examples from abundant labels without letting them dominate. Samples are balanced across images, and edge-guided spatial sampling retains informative boundaries. Its class probabilities are adjusted near image edges before the most probable label is selected.
 
 ## Neural refinement
 
-A lightweight U-Net receives image features together with the random-forest probability maps. It trains on balanced patches containing manual annotations and high-confidence prediction interiors; manual labels use full weight, while pseudo-labels use a lower weight. Rotation and reflection augmentations improve local correction from limited annotations.
+A lightweight U-Net receives image features together with the random-forest probability maps. Each refinement prioritizes the current and manually labeled images, then randomly fills a batch of up to ten images from the remaining uploads. It trains on balanced patches containing manual annotations and high-confidence prediction interiors; manual labels use full weight, while pseudo-labels use a lower weight. Repeated refinements rotate through different image samples, while rotation and reflection augmentations improve local correction from limited annotations.
 
 The final mask is the argmax of the refined class probabilities, with pixels below the confidence threshold marked as uncertain.
 

@@ -4,12 +4,13 @@ from fastapi import HTTPException, status
 from scipy.ndimage import distance_transform_edt as distance
 from torch.nn import functional
 
-from app.api.schema import TrainItem
+from app.api.schema import RefineItem
 from app.config import config
+from app.data.image import read as read_image
 from app.data.mask import read_item
 from app.refine import net
 from app.refine.model import Refiner
-from app.segment import feature
+from app.segment import feature, sample
 from app.segment.model import Segmenter
 
 
@@ -17,22 +18,18 @@ cfg = config.refine
 
 
 def fit(
-    items: list[TrainItem],
-    target: TrainItem,
+    items: list[RefineItem],
     segmenter: Segmenter,
     refiner: Refiner,
 ) -> None:
     classifier = segmenter.load()
     classes = classifier.classes_.astype(np.int8)
     class_idx = {int(label): idx for idx, label in enumerate(classes)}
-    unique = {item.image: item for item in items}
-    unique[target.image] = target
     records = []
     caps = {int(label): 0 for label in classes}
-    target_idx = None
 
-    for item in unique.values():
-        image, mask = read_item(item)
+    for item in items:
+        image, mask = _read(item)
         used = np.unique(mask[mask >= 0])
         if any(int(label) not in class_idx for label in used):
             raise HTTPException(
@@ -43,24 +40,20 @@ def fit(
             caps[int(label)] += int(np.sum(mask == label))
         probs = segmenter.prob(image, classifier)
         records.append((image, mask, probs))
-        if item.image == target.image:
-            target_idx = len(records) - 1
 
-    image, mask, probs = records[target_idx]
-    indices, labels = _select(
-        probs.reshape(-1, probs.shape[2]),
-        classes,
-        mask,
-        caps,
-    )
-    if indices.size == 0:
+    selections = _select_many(records, classes, caps)
+    if not any(indices.size for indices, _ in selections):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="No predictions met the refine confidence.",
         )
 
     data = []
-    for idx, (image, mask, probs) in enumerate(records):
+    for (image, mask, probs), (indices, labels) in zip(
+        records,
+        selections,
+        strict=True,
+    ):
         targets = np.full(mask.shape, cfg.ignore, dtype=np.int64)
         weights = np.zeros(mask.shape, dtype=np.float32)
         manual = mask >= 0
@@ -68,16 +61,24 @@ def fit(
             selected = mask == label
             targets[selected] = label_idx
             weights[selected] = 1.0
-        if idx == target_idx:
-            flat_targets = targets.ravel()
-            flat_weights = weights.ravel()
-            for label, label_idx in class_idx.items():
-                selected = indices[labels == label]
-                flat_targets[selected] = label_idx
-                flat_weights[selected] = cfg.pseudo_weight
+        flat_targets = targets.ravel()
+        flat_weights = weights.ravel()
+        for label, label_idx in class_idx.items():
+            selected = indices[labels == label]
+            flat_targets[selected] = label_idx
+            flat_weights[selected] = cfg.pseudo_weight
         data.append((image, probs, targets, weights, manual))
 
     _learn(data, classes, classifier.model_id_, refiner)
+
+
+def _read(item: RefineItem) -> tuple[np.ndarray, np.ndarray]:
+    if item.mask is not None:
+        return read_item(item)
+
+    image = read_image(item.image)
+    mask = np.full(image.shape[:2], cfg.ignore, dtype=np.int8)
+    return image, mask
 
 
 def _core(labels: np.ndarray) -> np.ndarray:
@@ -104,51 +105,69 @@ def _select(
     mask: np.ndarray,
     caps: dict[int, int],
 ) -> tuple[np.ndarray, np.ndarray]:
-    best = np.argmax(probs, axis=1)
-    rows = np.arange(probs.shape[0])
-    confidence = probs[rows, best]
-    labels = classes[best].astype(np.int8)
-    candidates = (
-        (confidence >= cfg.threshold)
-        & _core(labels.reshape(mask.shape))
-        & (mask.ravel() < 0)
-    )
-    rng = np.random.default_rng(0)
-    groups = []
+    shaped = probs.reshape(*mask.shape, probs.shape[-1])
+    record = (np.empty(0, dtype=np.uint8), mask, shaped)
+    return _select_many([record], classes, caps)[0]
 
-    for label in classes:
-        limit = caps.get(int(label), 0)
-        if limit <= 0:
-            continue
-        indices = np.flatnonzero(candidates & (labels == label))
-        if indices.size > limit:
-            indices = rng.choice(indices, limit, replace=False)
-        if indices.size:
-            groups.append(indices)
 
-    counts = np.zeros(len(groups), dtype=np.int64)
-    remaining = min(cfg.max_total, sum(group.size for group in groups))
-    while remaining:
-        changed = False
-        for idx, group in enumerate(groups):
-            if counts[idx] >= group.size:
+def _select_many(
+    records: list[tuple[np.ndarray, np.ndarray, np.ndarray]],
+    classes: np.ndarray,
+    caps: dict[int, int],
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    groups = [[] for _ in classes]
+    for _, mask, probs in records:
+        flat_probs = probs.reshape(-1, probs.shape[-1])
+        best = np.argmax(flat_probs, axis=1)
+        rows = np.arange(flat_probs.shape[0])
+        confidence = flat_probs[rows, best]
+        labels = classes[best].astype(np.int8)
+        candidates = (
+            (confidence >= cfg.threshold)
+            & _core(labels.reshape(mask.shape))
+            & (mask.ravel() < 0)
+        )
+        for label_idx, label in enumerate(classes):
+            groups[label_idx].append(
+                np.flatnonzero(candidates & (labels == label))
+            )
+
+    capacities = [
+        min(caps.get(int(label), 0), sum(value.size for value in values))
+        for label, values in zip(classes, groups, strict=True)
+    ]
+    totals = sample.quotas(capacities, cfg.max_total)
+    selected = [[] for _ in records]
+    selected_labels = [[] for _ in records]
+
+    for label, values, total in zip(classes, groups, totals, strict=True):
+        limits = sample.quotas([value.size for value in values], total)
+        for record_idx, (indices, limit) in enumerate(
+            zip(values, limits, strict=True)
+        ):
+            if limit == 0:
                 continue
-            counts[idx] += 1
-            remaining -= 1
-            changed = True
-            if remaining == 0:
-                break
-        if not changed:
-            break
+            mask = np.zeros(records[record_idx][1].shape, dtype=bool)
+            mask.ravel()[indices] = True
+            chosen = sample.spatial(mask, limit)
+            selected[record_idx].append(chosen)
+            selected_labels[record_idx].append(
+                np.full(chosen.size, label, dtype=np.int8)
+            )
 
-    chosen = []
-    for group, count in zip(groups, counts):
-        if count < group.size:
-            group = rng.choice(group, count, replace=False)
-        chosen.append(group)
-
-    indices = np.concatenate(chosen) if chosen else np.empty(0, dtype=np.int64)
-    return indices, labels[indices]
+    result = []
+    for indices, labels in zip(selected, selected_labels, strict=True):
+        result.append(
+            (
+                np.concatenate(indices)
+                if indices
+                else np.empty(0, dtype=np.int64),
+                np.concatenate(labels)
+                if labels
+                else np.empty(0, dtype=np.int8),
+            )
+        )
+    return result
 
 
 def _learn(
