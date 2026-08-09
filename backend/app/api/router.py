@@ -7,12 +7,10 @@ from fastapi import (
     File,
     Form,
     Header,
-    HTTPException,
     Response,
     UploadFile,
     status,
 )
-from pydantic import ValidationError
 from starlette.background import BackgroundTask
 from starlette.responses import FileResponse
 
@@ -22,17 +20,14 @@ from app.api.schema import (
     ExportArchiveRequest,
     ExportJobRequest,
     ExportRequest,
-    Mask,
     PredRequest,
     PredResponse,
-    RefineRequest,
     SessionResponse,
 )
 from app.data.image import read as read_image
 from app.data.mask import decode, encode
 from app.export import files as export_files
 from app.export.jobs import jobs
-from app.refine import train as refine
 from app.session import ModelSession, sessions
 
 
@@ -62,31 +57,15 @@ def create_session() -> SessionResponse:
 @router.post("/apply", status_code=status.HTTP_204_NO_CONTENT, tags=["model"])
 def apply_model(payload: ApplyRequest, session: SessionDep) -> None:
     with session.lock:
-        actions.apply(payload.images, session.segmenter, session.refiner)
+        actions.apply(payload.images, session.segmenter)
 
 
 @router.post("/predict", response_model=PredResponse, tags=["model"])
 def predict(payload: PredRequest, session: SessionDep) -> PredResponse:
     image = read_image(payload.image)
-    selected = decode(payload.labels) if payload.labels else None
     with session.lock:
-        mask, uncertain = actions.infer(
-            image,
-            session.segmenter,
-            session.refiner,
-            selected=selected,
-        )
+        mask, uncertain = actions.infer(image, session.segmenter)
     return PredResponse(mask=encode(mask), uncertain=encode(uncertain))
-
-
-@router.post("/refine", status_code=status.HTTP_204_NO_CONTENT, tags=["model"])
-def refine_model(payload: RefineRequest, session: SessionDep) -> None:
-    with session.lock:
-        refine.fit(
-            payload.images,
-            session.segmenter,
-            session.refiner,
-        )
 
 
 @router.post("/export", tags=["export"])
@@ -122,34 +101,24 @@ def create_job(payload: ExportJobRequest, session: SessionDep) -> dict[str, str]
 def run_job(
     job_id: str,
     session: SessionDep,
-    width: int = Form(gt=0),
+    width: int | None = Form(default=None, gt=0),
     files: list[UploadFile] = File(min_length=1),
-    labels: list[str] | None = Form(default=None),
 ) -> None:
-    if labels is not None and len(labels) != len(files):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="file and mask counts differ.",
-        )
-
-    try:
-        selected = [
-            None if value == "null" else decode(Mask.model_validate_json(value))
-            for value in labels or ["null"] * len(files)
-        ]
-    except ValidationError as error:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="invalid mask RLE.",
-        ) from error
-
     export_files.append_archive_batch(
         job_id,
         width,
         [(file.filename or "image", file.file) for file in files],
-        selected,
         session,
     )
+
+
+@router.delete(
+    "/export/jobs/{job_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["export"],
+)
+def cancel_job(job_id: str, session: SessionDep) -> None:
+    jobs.cancel(job_id, session.id)
 
 
 @router.get("/export/jobs/{job_id}", tags=["export"])

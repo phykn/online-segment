@@ -29,3 +29,16 @@ def read(value: str) -> np.ndarray:
             detail="invalid image.",
         ) from error
     return read_bytes(raw)
+
+
+def resize_width(image: np.ndarray, width: int | None) -> np.ndarray:
+    if width is None or width == image.shape[1]:
+        return image
+
+    height = max(1, round(image.shape[0] / image.shape[1] * width))
+    return np.asarray(
+        Image.fromarray(image).resize(
+            (width, height),
+            Image.Resampling.LANCZOS,
+        )
+    )

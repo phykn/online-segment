@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from sklearn.ensemble import RandomForestClassifier
 
 from app.config import config
-from app.segment import edge, feature
+from app.segment import cuda_forest, feature
 
 
 cfg = config.model
@@ -65,35 +65,71 @@ class Segmenter:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="model must be retrained for the current features.",
             )
-        if saved.get("kind") != cfg.kind:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="model must be retrained for the current model type.",
-            )
         classifier = saved.get("model")
         if not isinstance(classifier, RandomForestClassifier):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="model could not be loaded.",
             )
-        if not isinstance(getattr(classifier, "model_id_", None), str):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="model must be retrained for refinement.",
-            )
-        self._cache.update(stamp=stamp, model=classifier)
+        self._remember_model(stamp, classifier)
         return classifier
+
+    def _remember_model(
+        self,
+        stamp: int,
+        classifier: RandomForestClassifier,
+    ) -> None:
+        with self.lock:
+            self._cache.pop("batch_predictor_model", None)
+            self._cache.pop("batch_predictor", None)
+            self._cache.update(stamp=stamp, model=classifier)
+
+    def features(
+        self,
+        image: np.ndarray,
+        cached: bool = True,
+    ) -> np.ndarray:
+        if cached:
+            return feature.cached(image)
+        return feature.make(image)
 
     def prob(
         self,
         image: np.ndarray,
         classifier: RandomForestClassifier | None = None,
     ) -> np.ndarray:
-        height, width, _ = image.shape
-        stack = feature.cached(image)
+        return self.prob_features(
+            self.features(image),
+            classifier,
+        )
+
+    def prob_features(
+        self,
+        stack: np.ndarray,
+        classifier: RandomForestClassifier | None = None,
+    ) -> np.ndarray:
+        height, width, _ = stack.shape
         classifier = classifier or self.load()
         probs = classifier.predict_proba(stack.reshape(-1, feature.COUNT))
-        return edge.adjust(image, probs.reshape(height, width, -1))
+        return probs.reshape(height, width, -1)
+
+    def batch_predictor(
+        self,
+        classifier: RandomForestClassifier,
+    ) -> cuda_forest.CudaForestPredictor | None:
+        with self.lock:
+            if (
+                self._cache.get("batch_predictor_model") is classifier
+                and "batch_predictor" in self._cache
+            ):
+                return self._cache["batch_predictor"]
+
+            predictor = cuda_forest.make_predictor(classifier)
+            self._cache.update(
+                batch_predictor_model=classifier,
+                batch_predictor=predictor,
+            )
+            return predictor
 
     def _make(self) -> RandomForestClassifier:
         return RandomForestClassifier(
@@ -108,21 +144,16 @@ class Segmenter:
 
     def _save(self, classifier: RandomForestClassifier) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        classifier.model_id_ = uuid4().hex
         tmp = self.path.with_name(f".{self.path.name}.{uuid4().hex}.tmp")
         try:
             joblib.dump(
                 {
                     "model": classifier,
-                    "kind": cfg.kind,
                     "features": feature.config(),
                 },
                 tmp,
             )
             tmp.replace(self.path)
-            self._cache.update(
-                stamp=self.path.stat().st_mtime_ns,
-                model=classifier,
-            )
+            self._remember_model(self.path.stat().st_mtime_ns, classifier)
         finally:
             tmp.unlink(missing_ok=True)

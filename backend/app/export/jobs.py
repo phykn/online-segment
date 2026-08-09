@@ -54,11 +54,31 @@ class JobStore:
     def finish(self, job_id: str, owner: str, path: str) -> None:
         with self.lock:
             job = self._get(job_id, owner)
+            if job["status"] != "running":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="export job is not accepting images.",
+                )
             job.update(status="ready", done=job["total"], path=path)
 
     def fail(self, job_id: str, owner: str, message: str) -> None:
         with self.lock:
-            self._get(job_id, owner).update(status="error", error=message)
+            job = self._get(job_id, owner)
+            if job["status"] == "canceled":
+                return
+            job.update(status="error", error=message)
+
+    def cancel(self, job_id: str, owner: str) -> None:
+        with self.lock:
+            job = self._get(job_id, owner)
+            if job["status"] in {"error", "canceled"}:
+                return
+            path = job.get("path") or self.temp_path(job_id)
+            job.update(status="canceled", error="export canceled")
+        try:
+            Path(path).unlink(missing_ok=True)
+        except PermissionError:
+            pass
 
     def get(self, job_id: str, owner: str) -> dict:
         with self.lock:

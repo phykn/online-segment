@@ -4,6 +4,8 @@ from fastapi import HTTPException, status
 from app.api.schema import Mask, TrainItem
 from app.data.image import read as read_image
 
+UNLABELED = -1
+
 
 def decode(mask: Mask) -> np.ndarray:
     size = mask.width * mask.height
@@ -47,12 +49,24 @@ def encode(mask: np.ndarray) -> Mask:
     return Mask(width=width, height=height, runs=runs)
 
 
+def resize(mask: np.ndarray, width: int, height: int) -> np.ndarray:
+    if mask.shape == (height, width):
+        return mask
+
+    source_y = np.minimum(
+        mask.shape[0] - 1,
+        np.arange(height, dtype=np.int64) * mask.shape[0] // height,
+    )
+    source_x = np.minimum(
+        mask.shape[1] - 1,
+        np.arange(width, dtype=np.int64) * mask.shape[1] // width,
+    )
+    return mask[np.ix_(source_y, source_x)]
+
+
 def read_item(item: TrainItem) -> tuple[np.ndarray, np.ndarray]:
     mask = decode(item.mask)
     image = read_image(item.image)
     if image.shape[:2] != mask.shape:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="image and mask sizes differ.",
-        )
+        mask = resize(mask, image.shape[1], image.shape[0])
     return image, mask

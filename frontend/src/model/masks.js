@@ -23,32 +23,12 @@ export const encodeMask = (mask) => ({
   runs: encodeRuns(mask.data),
 })
 
-const decodeMask = (mask) => {
+export const decodeMask = (mask) => {
   const data = new Int8Array(mask.width * mask.height)
   let offset = 0
   for (const [value, length] of mask.runs) {
     data.fill(value, offset, offset + length)
     offset += length
   }
-  return data
+  return { width: mask.width, height: mask.height, data }
 }
-
-const overrideSelected = (mask, labels, valueFor) => {
-  if (mask.width !== labels.width || mask.height !== labels.height) {
-    throw new Error('Prediction and drawn mask sizes differ.')
-  }
-
-  const data = decodeMask(mask)
-  for (let index = 0; index < data.length; index += 1) {
-    if (labels.data[index] >= 0) {
-      data[index] = valueFor(labels.data[index])
-    }
-  }
-  return encodeMask({ width: mask.width, height: mask.height, data })
-}
-
-export const mergeLabels = (mask, labels) =>
-  overrideSelected(mask, labels, (label) => label)
-
-export const clearSelected = (mask, labels) =>
-  overrideSelected(mask, labels, () => 0)

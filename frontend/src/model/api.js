@@ -1,3 +1,4 @@
+import { EXPORT } from '../../config.js'
 import { getLabelMaskSnapshot } from '../editor/masks.js'
 import { decodeImage } from '../images/decode.js'
 import { setOriginalImageSize } from '../images/metadata.js'
@@ -5,8 +6,6 @@ import { encodeMask } from './masks.js'
 import { sessionFetch } from './session.js'
 
 const API_URL = '/api'
-const EXPORT_BATCH_FILE_LIMIT = 8
-const EXPORT_BATCH_BYTE_LIMIT = 32 * 1024 * 1024
 
 const readError = async (response, fallback) => {
   try {
@@ -18,17 +17,16 @@ const readError = async (response, fallback) => {
 }
 
 const encodeImage = async (file, targetWidth = null) => {
-  const mask = getLabelMaskSnapshot(file)
   const decoded = await decodeImage(file)
 
   try {
     setOriginalImageSize(file, decoded.width, decoded.height)
-    const width = targetWidth
-      ? Math.max(1, Math.round(targetWidth))
-      : mask.width
-    const height = targetWidth
-      ? Math.max(1, Math.round((decoded.height / decoded.width) * width))
-      : mask.height
+    const width = targetWidth == null
+      ? decoded.width
+      : Math.max(1, Math.round(targetWidth))
+    const height = targetWidth == null
+      ? decoded.height
+      : Math.max(1, Math.round((decoded.height / decoded.width) * width))
     const canvas = document.createElement('canvas')
     canvas.width = width
     canvas.height = height
@@ -78,47 +76,25 @@ export const predict = async (file, width) => {
   return response.json()
 }
 
-const makeRefineItem = async (file, width) => {
-  const mask = getLabelMaskSnapshot(file)
-  return {
-    image: await encodeImage(file, width),
-    mask: mask ? encodeMask(mask) : null,
-  }
-}
-
-export const refine = async (images, width) => {
-  const items = await Promise.all(
-    images.map((image) => makeRefineItem(image, width)),
-  )
-  const response = await sessionFetch('/refine', {
+export const exportMask = async (mask, width, height) => {
+  const response = await fetch(`${API_URL}/export`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ images: items }),
+    body: JSON.stringify({ mask, width, height }),
   })
 
   if (!response.ok) {
-    throw new Error(await readError(response, 'Could not refine the model.'))
-  }
-}
-
-export const exportMasks = async (files, width, height) => {
-  const response = await fetch(`${API_URL}/export/archive`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ files, width, height }),
-  })
-
-  if (!response.ok) {
-    throw new Error(await readError(response, 'Could not export the masks.'))
+    throw new Error(await readError(response, 'Could not export the mask.'))
   }
   return response.blob()
 }
 
-const createExport = async (total) => {
+const createExport = async (total, signal) => {
   const response = await sessionFetch('/export/jobs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ total }),
+    signal,
   })
   if (!response.ok) {
     throw new Error(await readError(response, 'Could not start the export.'))
@@ -126,18 +102,17 @@ const createExport = async (total) => {
   return response.json()
 }
 
-const runExport = async (id, files, width, forceLabels) => {
+const runExport = async (id, files, width, signal) => {
   const body = new FormData()
-  body.append('width', String(width))
+  if (width != null) body.append('width', String(width))
   for (const file of files) {
-    const labels = forceLabels ? getLabelMaskSnapshot(file) : null
     body.append('files', file, file.name)
-    body.append('labels', JSON.stringify(labels ? encodeMask(labels) : null))
   }
 
   const response = await sessionFetch(`/export/jobs/${id}`, {
     method: 'POST',
     body,
+    signal,
   })
   if (!response.ok) {
     throw new Error(await readError(response, 'Could not export the images.'))
@@ -152,8 +127,8 @@ const makeExportBatches = (files) => {
   for (const file of files) {
     const exceedsLimit =
       batch.length > 0 &&
-      (batch.length >= EXPORT_BATCH_FILE_LIMIT ||
-        bytes + file.size > EXPORT_BATCH_BYTE_LIMIT)
+      (batch.length >= EXPORT.batchFiles ||
+        bytes + file.size > EXPORT.batchBytes)
     if (exceedsLimit) {
       batches.push(batch)
       batch = []
@@ -166,34 +141,116 @@ const makeExportBatches = (files) => {
   return batches
 }
 
-const getExport = async (id) => {
-  const response = await sessionFetch(`/export/jobs/${id}`)
+const makeExportPlans = (files, width) =>
+  makeExportBatches(files).map((batch) => ({ batch, width }))
+
+const getExport = async (id, signal) => {
+  const response = await sessionFetch(`/export/jobs/${id}`, { signal })
   if (!response.ok) {
     throw new Error(await readError(response, 'Could not read export progress.'))
   }
   return response.json()
 }
 
-const getExportFile = async (id) => {
-  const response = await sessionFetch(`/export/jobs/${id}/file`)
+const pollWhilePending = async (work, poll) => {
+  let pending = true
+  let cancelWait = null
+  const polling = (async () => {
+    while (pending) {
+      const elapsed = await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(true), EXPORT.progressPollMs)
+        cancelWait = () => {
+          clearTimeout(timer)
+          resolve(false)
+        }
+      })
+      cancelWait = null
+      if (!elapsed || !pending) return
+
+      try {
+        await poll()
+      } catch {
+        return
+      }
+    }
+  })()
+
+  try {
+    return await work
+  } finally {
+    pending = false
+    if (cancelWait) cancelWait()
+    await polling
+  }
+}
+
+const cancelExport = async (id) => {
+  const response = await sessionFetch(`/export/jobs/${id}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok && response.status !== 404) {
+    throw new Error(await readError(response, 'Could not cancel the export.'))
+  }
+}
+
+const getExportFile = async (id, signal) => {
+  const response = await sessionFetch(`/export/jobs/${id}/file`, { signal })
   if (!response.ok) {
     throw new Error(await readError(response, 'Could not download the export.'))
   }
   return response.blob()
 }
 
-export const exportAll = async (files, width, forceLabels, onProgress) => {
-  const { id } = await createExport(files.length)
-  let done = 0
-  for (const batch of makeExportBatches(files)) {
-    await runExport(id, batch, width, forceLabels)
-    done += batch.length
-    onProgress(Math.round((done / files.length) * 100))
-  }
+export const exportAll = async (
+  files,
+  width,
+  onProgress,
+  signal,
+) => {
+  let id = null
+  try {
+    ({ id } = await createExport(files.length, signal))
+    const plans = makeExportPlans(files, width)
+    let lastProgress = 0
+    const reportProgress = (done, total) => {
+      if (
+        !Number.isFinite(done) ||
+        !Number.isFinite(total) ||
+        total <= 0
+      ) {
+        return
+      }
+      const progress = Math.max(
+        0,
+        Math.min(100, Math.round((done / total) * 100)),
+      )
+      if (progress <= lastProgress) return
+      lastProgress = progress
+      onProgress(progress)
+    }
 
-  const state = await getExport(id)
-  if (state.status !== 'ready') {
-    throw new Error(state.error || 'Could not export the images.')
+    let done = 0
+    const uploads = (async () => {
+      for (const plan of plans) {
+        await runExport(id, plan.batch, plan.width, signal)
+        done += plan.batch.length
+        reportProgress(done, files.length)
+      }
+    })()
+    await pollWhilePending(uploads, async () => {
+      const state = await getExport(id, signal)
+      reportProgress(state.done, state.total)
+    })
+
+    const state = await getExport(id, signal)
+    if (state.status !== 'ready') {
+      throw new Error(state.error || 'Could not export the images.')
+    }
+    return getExportFile(id, signal)
+  } catch (error) {
+    if (error?.name === 'AbortError' && id) {
+      await cancelExport(id).catch(() => {})
+    }
+    throw error
   }
-  return getExportFile(id)
 }

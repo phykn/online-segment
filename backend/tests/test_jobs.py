@@ -44,5 +44,30 @@ class JobStoreTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 404)
 
 
+    def test_cancel_marks_job_and_ignores_late_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp), max_age=3600, prefix="test")
+            owner = "session-a"
+            job_id = store.create(owner)
+            store.start(job_id, owner, 2)
+            path = Path(store.temp_path(job_id))
+            path.touch()
+
+            store.cancel(job_id, owner)
+
+            self.assertFalse(path.exists())
+            self.assertEqual(
+                store.get(job_id, owner),
+                {
+                    "status": "canceled",
+                    "done": 0,
+                    "total": 2,
+                    "error": "export canceled",
+                },
+            )
+            store.fail(job_id, owner, "late worker failure")
+            self.assertEqual(store.get(job_id, owner)["status"], "canceled")
+
+
 if __name__ == "__main__":
     unittest.main()

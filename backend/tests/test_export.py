@@ -2,7 +2,7 @@ import unittest
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from threading import RLock
+from threading import Event, RLock
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from zipfile import ZipFile
@@ -10,6 +10,7 @@ from zipfile import ZipFile
 import numpy as np
 from PIL import Image
 
+from app.config import config
 from app.export.files import append_archive_batch, make_mask_archive, make_png
 from app.export.jobs import JobStore
 
@@ -24,7 +25,18 @@ class ExportTests(unittest.TestCase):
         with Image.open(BytesIO(png)) as image:
             self.assertEqual(image.format, "PNG")
             self.assertEqual(image.mode, "P")
-            self.assertEqual(list(image.getdata()), [255, 0, 1, 2])
+            self.assertEqual(
+                list(image.get_flattened_data()),
+                [255, 0, 1, 2],
+            )
+
+    def test_spatial_mask_png_is_compressed(self) -> None:
+        mask = np.zeros((512, 512), dtype=np.int8)
+        mask[128:384, 128:384] = 1
+
+        png = make_png(mask, 512, 512)
+
+        self.assertLess(len(png), mask.nbytes // 8)
 
     def test_mask_archive_contains_lossless_png_files(self) -> None:
         result = np.array([[0, 1]], dtype=np.int8)
@@ -47,10 +59,12 @@ class ExportTests(unittest.TestCase):
             for name in archive.namelist():
                 self.assertEqual(archive.read(name)[:8], b"\x89PNG\r\n\x1a\n")
 
-    def test_archive_is_built_one_image_at_a_time(self) -> None:
-        source = BytesIO()
-        Image.new("RGB", (2, 1), "white").save(source, format="PNG")
-        image_bytes = source.getvalue()
+    def test_archive_preserves_order_with_feature_lookahead(self) -> None:
+        image_bytes = []
+        for color in ("black", "white"):
+            source = BytesIO()
+            Image.new("RGB", (2, 1), color).save(source, format="PNG")
+            image_bytes.append(source.getvalue())
 
         with TemporaryDirectory() as tmp:
             store = JobStore(Path(tmp), max_age=3600, prefix="test")
@@ -59,25 +73,30 @@ class ExportTests(unittest.TestCase):
             session = SimpleNamespace(
                 id="session-a",
                 lock=RLock(),
-                segmenter=SimpleNamespace(load=Mock(return_value=object())),
-                refiner=object(),
+                segmenter=SimpleNamespace(
+                    load=Mock(return_value=object()),
+                    features=Mock(
+                        side_effect=lambda image, cached: (image[..., :1] > 0)
+                    ),
+                ),
             )
 
             with (
                 patch("app.export.files.jobs", store),
                 patch(
-                    "app.export.files.actions.predict",
-                    return_value=np.zeros((1, 2), dtype=np.int8),
-                ),
+                    "app.export.files.actions.predict_features",
+                    side_effect=lambda stack, segmenter, model: stack[
+                        ..., 0
+                    ].astype(np.int8),
+                ) as predict,
             ):
                 append_archive_batch(
                     job_id,
-                    2,
+                    None,
                     [
-                        ("same.png", BytesIO(image_bytes)),
-                        ("same.png", BytesIO(image_bytes)),
+                        ("same.png", BytesIO(image_bytes[0])),
+                        ("same.png", BytesIO(image_bytes[1])),
                     ],
-                    [None, None],
                     session,
                 )
 
@@ -85,10 +104,204 @@ class ExportTests(unittest.TestCase):
             with ZipFile(store.path(job_id, session.id)) as archive:
                 self.assertEqual(
                     archive.namelist(),
-                    ["same_mask.png", "same_mask_2.png"],
+                    ["same.png", "same_2.png"],
                 )
+                with Image.open(BytesIO(archive.read("same.png"))) as first:
+                    self.assertEqual(list(first.get_flattened_data()), [0, 0])
+                with Image.open(BytesIO(archive.read("same_2.png"))) as second:
+                    self.assertEqual(list(second.get_flattened_data()), [1, 1])
             self.assertEqual(session.segmenter.load.call_count, 1)
+            self.assertEqual(session.segmenter.features.call_count, 2)
+            self.assertEqual(predict.call_count, 2)
+            self.assertTrue(
+                all(
+                    call.kwargs == {"cached": False}
+                    for call in session.segmenter.features.call_args_list
+                )
+            )
 
+    def test_next_features_overlap_current_prediction(self) -> None:
+        source = BytesIO()
+        Image.new("RGB", (2, 1), "white").save(source, format="PNG")
+        image_bytes = source.getvalue()
+        second_started = Event()
+        release_second = Event()
+        feature_calls = 0
+
+        def make_features(image, cached=True):
+            nonlocal feature_calls
+            feature_calls += 1
+            if feature_calls == 2:
+                second_started.set()
+                if not release_second.wait(5):
+                    raise AssertionError(
+                        "second feature extraction was not released"
+                    )
+            return np.zeros((1, 2, 1))
+
+        def predict_features(stack, segmenter, classifier):
+            if not second_started.wait(5):
+                raise AssertionError("next feature extraction did not overlap")
+            release_second.set()
+            return np.zeros((1, 2), dtype=np.int8)
+
+        with TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp), max_age=3600, prefix="test")
+            job_id = store.create("session-a")
+            store.start(job_id, "session-a", 2)
+            session = SimpleNamespace(
+                id="session-a",
+                lock=RLock(),
+                segmenter=SimpleNamespace(
+                    load=Mock(return_value=object()),
+                    features=make_features,
+                ),
+            )
+
+            with (
+                patch("app.export.files.jobs", store),
+                patch(
+                    "app.export.files.actions.predict_features",
+                    side_effect=predict_features,
+                ),
+            ):
+                append_archive_batch(
+                    job_id,
+                    None,
+                    [
+                        ("first.png", BytesIO(image_bytes)),
+                        ("second.png", BytesIO(image_bytes)),
+                    ],
+                    session,
+                )
+
+            self.assertEqual(store.get(job_id, session.id)["status"], "ready")
+
+    def test_large_export_builds_gpu_during_feature_lookahead(self) -> None:
+        source = BytesIO()
+        Image.new("RGB", (2, 1), "white").save(source, format="PNG")
+        image_bytes = source.getvalue()
+        second_started = Event()
+        release_second = Event()
+        feature_calls = 0
+        predictor = object()
+        model = object()
+
+        def make_features(image, cached=True):
+            nonlocal feature_calls
+            feature_calls += 1
+            if feature_calls == 2:
+                second_started.set()
+                if not release_second.wait(5):
+                    raise AssertionError(
+                        "GPU initialization did not release lookahead"
+                    )
+            return np.zeros((1, 2, 1))
+
+        def make_predictor(classifier):
+            if not second_started.wait(5):
+                raise AssertionError(
+                    "GPU initialization started before feature lookahead"
+                )
+            release_second.set()
+            return predictor
+
+        with TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp), max_age=3600, prefix="test")
+            job_id = store.create("session-a")
+            store.start(job_id, "session-a", 2)
+            session = SimpleNamespace(
+                id="session-a",
+                lock=RLock(),
+                segmenter=SimpleNamespace(
+                    load=Mock(return_value=model),
+                    features=make_features,
+                    batch_predictor=Mock(side_effect=make_predictor),
+                ),
+            )
+
+            with (
+                patch("app.export.files.jobs", store),
+                patch.object(
+                    config.performance.export,
+                    "gpu_min_pixels",
+                    4,
+                ),
+                patch(
+                    "app.export.files.actions.predict_features",
+                    return_value=np.zeros((1, 2), dtype=np.int8),
+                ) as predict,
+            ):
+                append_archive_batch(
+                    job_id,
+                    None,
+                    [
+                        ("first.png", BytesIO(image_bytes)),
+                        ("second.png", BytesIO(image_bytes)),
+                    ],
+                    session,
+                )
+
+            session.segmenter.batch_predictor.assert_called_once_with(model)
+            self.assertEqual(predict.call_count, 2)
+            self.assertTrue(
+                all(
+                    call.kwargs == {"predictor": predictor}
+                    for call in predict.call_args_list
+                )
+            )
+
+    def test_feature_lookahead_error_removes_partial_archive(self) -> None:
+        source = BytesIO()
+        Image.new("RGB", (2, 1), "white").save(source, format="PNG")
+        image_bytes = source.getvalue()
+        feature_calls = 0
+
+        def make_features(image, cached=True):
+            nonlocal feature_calls
+            feature_calls += 1
+            if feature_calls == 2:
+                raise RuntimeError("feature preparation failed")
+            return np.zeros((1, 2, 1))
+
+        with TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp), max_age=3600, prefix="test")
+            job_id = store.create("session-a")
+            store.start(job_id, "session-a", 2)
+            session = SimpleNamespace(
+                id="session-a",
+                lock=RLock(),
+                segmenter=SimpleNamespace(
+                    load=Mock(return_value=object()),
+                    features=make_features,
+                ),
+            )
+
+            with (
+                patch("app.export.files.jobs", store),
+                patch(
+                    "app.export.files.actions.predict_features",
+                    return_value=np.zeros((1, 2), dtype=np.int8),
+                ),
+                self.assertRaisesRegex(
+                    RuntimeError,
+                    "feature preparation failed",
+                ),
+            ):
+                append_archive_batch(
+                    job_id,
+                    None,
+                    [
+                        ("first.png", BytesIO(image_bytes)),
+                        ("second.png", BytesIO(image_bytes)),
+                    ],
+                    session,
+                )
+
+            state = store.get(job_id, session.id)
+            self.assertEqual(state["status"], "error")
+            self.assertEqual(state["done"], 1)
+            self.assertFalse(Path(store.temp_path(job_id)).exists())
 
 if __name__ == "__main__":
     unittest.main()

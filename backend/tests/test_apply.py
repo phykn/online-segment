@@ -62,17 +62,15 @@ class ApplyTests(unittest.TestCase):
         self.assertEqual(x.shape, (12, 3))
         self.assertEqual(np.bincount(y).tolist(), [8, 4])
 
-    def test_apply_resets_refine_model_after_rf_training(self) -> None:
+    def test_apply_trains_the_segmenter(self) -> None:
         x = np.zeros((4, 3), dtype=np.float32)
         y = np.array([0, 0, 1, 1], dtype=np.int8)
         segmenter = Mock()
-        refiner = Mock()
 
         with patch.object(actions, "make_data", return_value=(x, y)):
-            actions.apply([], segmenter, refiner)
+            actions.apply([], segmenter)
 
         segmenter.fit.assert_called_once_with(x, y)
-        refiner.reset.assert_called_once_with()
 
 
 if __name__ == "__main__":

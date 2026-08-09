@@ -1,8 +1,12 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, shallowRef, watch } from 'vue'
 
+import { OPACITY, ZOOM } from '../../config.js'
+import { makeMaskConstraint } from './constraints'
 import { useCanvasInput } from './input'
 import { usePainter } from './painter'
+import ResultControls from './ResultControls.vue'
+import { getEditorSize } from './size'
 import { decodeImage } from '../images/decode'
 import { setOriginalImageSize } from '../images/metadata'
 
@@ -13,7 +17,7 @@ const props = defineProps({
   },
   targetWidth: {
     type: Number,
-    required: true,
+    default: null,
   },
   selectedLabel: {
     type: Number,
@@ -31,9 +35,13 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  forceLabels: {
-    type: Boolean,
+  zoom: {
+    type: Number,
     required: true,
+  },
+  uncertaintyMask: {
+    type: Object,
+    default: null,
   },
   canDownload: {
     type: Boolean,
@@ -52,8 +60,8 @@ const props = defineProps({
 const emit = defineEmits([
   'download',
   'label-state-change',
-  'update:force-labels',
   'update:brush-size',
+  'update:zoom',
 ])
 
 const imageCanvasRef = ref(null)
@@ -64,20 +72,29 @@ const resultLabelCanvasRef = ref(null)
 const rootRef = ref(null)
 const rendered = ref(false)
 const errorMessage = ref('')
-const resultOpacity = ref(0.78)
-const resultLabelsVisible = ref(true)
-const uncertaintyVisible = ref(true)
+const resultOpacity = ref(OPACITY.default)
+const resultLabelsVisible = ref(false)
+const uncertaintyVisible = ref(false)
+const unclearConstraint = shallowRef(null)
 
 const labelPainter = usePainter()
 let renderId = 0
+let strokeConstrained = false
+
+const getPaintConstraint = () =>
+  uncertaintyVisible.value && unclearConstraint.value
+    ? unclearConstraint.value
+    : null
 
 const resetLabels = (image) => {
   labelPainter.resetForImage(
     image,
     labelCanvasRef.value,
-    resultLabelCanvasRef.value,
+    props.resultImage ? resultLabelCanvasRef.value : null,
   )
-  labelPainter.render(resultLabelOutlineCanvasRef.value, true)
+  if (props.resultImage) {
+    labelPainter.render(resultLabelOutlineCanvasRef.value, true)
+  }
   emit('label-state-change', {
     image,
     hasLabels: false,
@@ -112,8 +129,11 @@ const drawResized = (source, sourceWidth, sourceHeight, file) => {
     throw new Error('Could not find the image canvas.')
   }
 
-  const width = Math.max(1, Math.round(props.targetWidth))
-  const height = Math.max(1, Math.round((sourceHeight / sourceWidth) * width))
+  const { width, height } = getEditorSize(
+    sourceWidth,
+    sourceHeight,
+    props.targetWidth,
+  )
 
   imageCanvas.width = width
   imageCanvas.height = height
@@ -137,8 +157,10 @@ const drawResized = (source, sourceWidth, sourceHeight, file) => {
 
   labelPainter.prepare(file, width, height)
   labelPainter.render(labelCanvas)
-  labelPainter.render(resultLabelOutlineCanvas, true)
-  labelPainter.render(resultLabelCanvas, true)
+  if (props.resultImage) {
+    labelPainter.render(resultLabelOutlineCanvas, true)
+    labelPainter.render(resultLabelCanvas, true)
+  }
   emitLabelState()
 }
 
@@ -148,7 +170,7 @@ const stampLabel = (point, radius, label) => {
     point,
     radius,
     label,
-    resultLabelCanvasRef.value,
+    props.resultImage ? resultLabelCanvasRef.value : null,
   )
 }
 
@@ -160,14 +182,61 @@ const paintLabelLine = (from, control, to, radius, label) => {
     to,
     radius,
     label,
-    resultLabelCanvasRef.value,
+    props.resultImage ? resultLabelCanvasRef.value : null,
   )
 }
 
 const finishLabelStroke = () => {
+  const constrained = strokeConstrained
+  strokeConstrained = false
   const changed = labelPainter.commitStroke()
-  labelPainter.render(resultLabelOutlineCanvasRef.value, true)
+  if (constrained) {
+    labelPainter.render(labelCanvasRef.value)
+    if (props.resultImage) {
+      labelPainter.render(resultLabelCanvasRef.value, true)
+    }
+  }
+  if (props.resultImage) {
+    labelPainter.render(resultLabelOutlineCanvasRef.value, true)
+  }
   if (labelPainter.isReady()) emitLabelState(changed, true)
+}
+
+const renderLabels = () => {
+  labelPainter.render(labelCanvasRef.value)
+  if (props.resultImage) {
+    labelPainter.render(resultLabelOutlineCanvasRef.value, true)
+    labelPainter.render(resultLabelCanvasRef.value, true)
+  }
+}
+
+const changeHistory = (action) => {
+  if (props.busy || !action()) return
+
+  renderLabels()
+  emitLabelState(true, true)
+}
+
+const undoStroke = () => changeHistory(labelPainter.undo)
+const redoStroke = () => changeHistory(labelPainter.redo)
+
+const toggleUncertainty = () => {
+  uncertaintyVisible.value = !uncertaintyVisible.value
+}
+
+const toggleEdits = () => {
+  resultLabelsVisible.value = !resultLabelsVisible.value
+}
+
+const adjustOpacity = (amount) => {
+  const next = Math.round((resultOpacity.value + amount) * 100) / 100
+  resultOpacity.value = Math.min(OPACITY.max, Math.max(OPACITY.min, next))
+}
+
+const beginLabelStroke = () => {
+  const constraint = getPaintConstraint()
+  strokeConstrained = Boolean(constraint)
+  labelPainter.beginStroke(constraint)
 }
 
 const makeInput = (canvasRef) =>
@@ -175,10 +244,11 @@ const makeInput = (canvasRef) =>
     canvasRef,
     getBrushSize: () => props.brushSize,
     setBrushSize: (size) => emit('update:brush-size', size),
+    updateZoom: (zoom) => emit('update:zoom', zoom),
     getLabel: () => props.selectedLabel,
     canEdit: () =>
       rendered.value && !props.busy && labelPainter.isReady(),
-    start: labelPainter.beginStroke,
+    start: beginLabelStroke,
     stamp: stampLabel,
     line: paintLabelLine,
     finish: finishLabelStroke,
@@ -208,6 +278,7 @@ watch(
     rendered.value = false
     errorMessage.value = ''
     for (const input of inputs) input.reset()
+    if (props.zoom !== ZOOM.default) emit('update:zoom', ZOOM.default)
     labelPainter.clear()
     if (rootRef.value) rootRef.value.scrollTop = 0
 
@@ -260,7 +331,39 @@ watch(
   },
 )
 
-defineExpose({ resetLabels })
+watch(
+  () => props.zoom,
+  (zoom) => {
+    for (const input of inputs) input.setZoom(zoom)
+  },
+)
+
+watch(
+  () => props.resultImage,
+  (resultImage) => {
+    if (!resultImage || !labelPainter.isReady()) return
+
+    labelPainter.render(resultLabelOutlineCanvasRef.value, true)
+    labelPainter.render(resultLabelCanvasRef.value, true)
+  },
+)
+
+watch(
+  () => props.uncertaintyMask,
+  (mask) => {
+    unclearConstraint.value = makeMaskConstraint(mask)
+  },
+  { immediate: true },
+)
+
+defineExpose({
+  resetLabels,
+  redoStroke,
+  undoStroke,
+  toggleUncertainty,
+  toggleEdits,
+  adjustOpacity,
+})
 </script>
 
 <template>
@@ -335,13 +438,6 @@ defineExpose({ resetLabels })
                 draggable="false"
                 alt="Prediction mask over the original image"
               />
-              <img
-                v-show="uncertaintyVisible"
-                class="workspace__uncertainty"
-                :src="uncertaintyImage"
-                draggable="false"
-                alt="Uncertain prediction regions"
-              />
               <canvas
                 v-show="resultLabelsVisible"
                 ref="resultLabelOutlineCanvasRef"
@@ -354,6 +450,13 @@ defineExpose({ resetLabels })
                 class="workspace__result-labels"
                 aria-hidden="true"
               ></canvas>
+              <img
+                v-show="uncertaintyVisible"
+                class="workspace__uncertainty"
+                :src="uncertaintyImage"
+                draggable="false"
+                alt="Unclear prediction areas"
+              />
               <span
                 v-show="resultCursorVisible"
                 class="workspace__brush-cursor"
@@ -362,64 +465,15 @@ defineExpose({ resetLabels })
               ></span>
             </div>
           </div>
-          <div class="workspace__result-controls">
-            <button
-              class="workspace__download"
-              type="button"
-              :disabled="!canDownload || busy || downloading"
-              @click="emit('download')"
-            >
-              {{ downloading ? 'Downloading' : 'Download' }}
-            </button>
-            <label class="workspace__switch-control">
-                <span>Override</span>
-                <input
-                  class="workspace__switch-input"
-                  type="checkbox"
-                  :checked="forceLabels"
-                  :disabled="busy || downloading"
-                  @change="emit('update:force-labels', $event.target.checked)"
-                />
-                <span class="workspace__switch-track" aria-hidden="true">
-                  <span></span>
-                </span>
-            </label>
-            <label class="workspace__switch-control">
-                <span>Uncertainty</span>
-                <input
-                  v-model="uncertaintyVisible"
-                  class="workspace__switch-input"
-                  type="checkbox"
-                />
-                <span class="workspace__switch-track" aria-hidden="true">
-                  <span></span>
-                </span>
-            </label>
-            <label class="workspace__switch-control">
-                <span>Edits</span>
-                <input
-                  v-model="resultLabelsVisible"
-                  class="workspace__switch-input"
-                  type="checkbox"
-                />
-                <span class="workspace__switch-track" aria-hidden="true">
-                  <span></span>
-                </span>
-            </label>
-            <label class="workspace__opacity">
-                <span>Opacity</span>
-                <input
-                  v-model.number="resultOpacity"
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.05"
-                  :aria-valuetext="Math.round(resultOpacity * 100) + ' percent'"
-                  @pointerup="$event.currentTarget.blur()"
-                  @pointercancel="$event.currentTarget.blur()"
-                />
-            </label>
-          </div>
+          <ResultControls
+            v-model:unclear="uncertaintyVisible"
+            v-model:edits="resultLabelsVisible"
+            v-model:opacity="resultOpacity"
+            :can-download="canDownload"
+            :downloading="downloading"
+            :busy="busy"
+            @download="emit('download')"
+          />
         </div>
       </div>
     </div>

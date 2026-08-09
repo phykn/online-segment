@@ -1,19 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import {
-  archiveName,
-  maskName,
-} from '../src/model/output.js'
+import { pngName, zipName } from '../src/model/output.js'
 
-test('uses a PNG extension for saved masks', () => {
-  assert.equal(maskName({ name: 'photo.jpg' }), 'photo_mask.png')
-  assert.equal(
-    maskName({ name: 'scan.tiff' }, '_result'),
-    'scan_result_mask.png',
-  )
+test('uses the original file name with a PNG extension', () => {
+  assert.equal(pngName({ name: 'photo.jpg' }), 'photo.png')
+  assert.equal(pngName({ name: 'scan.tiff' }), 'scan.png')
 })
 
-test('uses an image-specific ZIP name for combined downloads', () => {
-  assert.equal(archiveName({ name: 'photo.jpg' }), 'photo_masks.zip')
+test('uses a safe requested ZIP file name', () => {
+  assert.equal(zipName('particle results'), 'particle results.zip')
+  assert.equal(zipName('particle results.ZIP'), 'particle results.zip')
+  assert.equal(zipName('batch:01/result'), 'batch_01_result.zip')
+  assert.equal(zipName('  '), 'masks.zip')
 })

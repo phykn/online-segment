@@ -18,6 +18,9 @@ frontend/.vite/
 *.bat
 /DESIGN.md
 
+# Test data
+/data_temp/
+
 # Editors and OS
 .idea/
 .vscode/

@@ -1,4 +1,4 @@
-import { ERASER_LABEL, LABELS } from './config.js'
+import { ERASER_LABEL, LABELS } from '../../config.js'
 import {
   ensureLabelMask,
   getLabelMask,
@@ -6,6 +6,8 @@ import {
   markLabelMaskChanged,
   resetLabelMask,
 } from './masks.js'
+
+const HISTORY_LIMIT = 100
 
 const drawCircle = (context, point, radius) => {
   context.beginPath()
@@ -71,9 +73,11 @@ const drawCurve = (
   context.restore()
 }
 
-const setLabel = (mask, index, label) => {
+const setLabel = (mask, index, label, changes = null) => {
   const previous = mask.data[index]
   if (previous === label) return false
+
+  if (changes && !changes.has(index)) changes.set(index, previous)
 
   if (previous === ERASER_LABEL && label !== ERASER_LABEL) {
     mask.labeledCount += 1
@@ -84,7 +88,15 @@ const setLabel = (mask, index, label) => {
   return true
 }
 
-export const paintMaskLine = (mask, from, to, radius, label) => {
+export const paintMaskLine = (
+  mask,
+  from,
+  to,
+  radius,
+  label,
+  allows = null,
+  changes = null,
+) => {
   const minX = Math.max(0, Math.floor(Math.min(from.x, to.x) - radius))
   const maxX = Math.min(
     mask.width - 1,
@@ -118,8 +130,10 @@ export const paintMaskLine = (mask, from, to, radius, label) => {
       const offsetX = x - nearestX
       const offsetY = y - nearestY
       if (offsetX * offsetX + offsetY * offsetY > radiusSquared) continue
+      if (allows && !allows(x, y, mask.width, mask.height)) continue
 
-      changed = setLabel(mask, y * mask.width + x, label) || changed
+      changed =
+        setLabel(mask, y * mask.width + x, label, changes) || changed
     }
   }
   return changed
@@ -132,6 +146,8 @@ export const paintMaskCurve = (
   to,
   radius,
   label,
+  allows = null,
+  changes = null,
 ) => {
   const length =
     Math.hypot(control.x - from.x, control.y - from.y) +
@@ -153,23 +169,44 @@ export const paintMaskCurve = (
         2 * remaining * progress * control.y +
         progress * progress * to.y,
     }
-    changed = paintMaskLine(mask, previous, point, radius, label) || changed
+    changed =
+      paintMaskLine(
+        mask,
+        previous,
+        point,
+        radius,
+        label,
+        allows,
+        changes,
+      ) || changed
     previous = point
   }
   return changed
 }
 
 export const usePainter = () => {
+  const history = new WeakMap()
   let currentImage = null
   let strokeImage = null
+  let strokeAllows = null
   let pendingOperations = []
 
   const getCurrentMask = () =>
     currentImage ? getLabelMask(currentImage) : null
 
+  const getHistory = (image) => {
+    let value = history.get(image)
+    if (!value) {
+      value = { undo: [], redo: [] }
+      history.set(image, value)
+    }
+    return value
+  }
+
   const clear = () => {
     currentImage = null
     strokeImage = null
+    strokeAllows = null
     pendingOperations = []
   }
 
@@ -178,25 +215,31 @@ export const usePainter = () => {
     currentImage ? hasImageLabels(currentImage) : false
 
   const prepare = (image, width, height) => {
-    ensureLabelMask(image, width, height)
+    const previous = getLabelMask(image)
+    const mask = ensureLabelMask(image, width, height)
+    if (previous && previous !== mask) history.delete(image)
     currentImage = image
     strokeImage = null
     pendingOperations = []
   }
 
-  const beginStroke = () => {
+  const beginStroke = (allows = null) => {
     strokeImage = currentImage
+    strokeAllows = allows
     pendingOperations = []
   }
 
   const commitStroke = () => {
     const image = strokeImage
     const operations = pendingOperations
+    const allows = strokeAllows
     strokeImage = null
+    strokeAllows = null
     pendingOperations = []
     const mask = image ? getLabelMask(image) : null
     if (!mask) return false
 
+    const changes = new Map()
     let changed = false
     for (const operation of operations) {
       if (operation.type === 'stamp') {
@@ -207,6 +250,8 @@ export const usePainter = () => {
             operation.point,
             operation.radius,
             operation.label,
+            allows,
+            changes,
           ) || changed
       } else {
         changed =
@@ -217,11 +262,56 @@ export const usePainter = () => {
             operation.to,
             operation.radius,
             operation.label,
+            allows,
+            changes,
           ) || changed
       }
     }
-    if (changed) markLabelMaskChanged(image)
+    if (changed) {
+      markLabelMaskChanged(image)
+      const strokes = getHistory(image)
+      strokes.undo.push({
+        before: changes,
+        after: new Map(
+          [...changes.keys()].map((index) => [index, mask.data[index]]),
+        ),
+      })
+      if (strokes.undo.length > HISTORY_LIMIT) strokes.undo.shift()
+      strokes.redo = []
+    }
     return changed
+  }
+
+  const restore = (mask, changes) => {
+    for (const [index, label] of changes) {
+      setLabel(mask, index, label)
+    }
+  }
+
+  const undo = () => {
+    const image = currentImage
+    const mask = getCurrentMask()
+    const strokes = image ? history.get(image) : null
+    const stroke = strokes?.undo.pop()
+    if (!image || !mask || !stroke) return false
+
+    restore(mask, stroke.before)
+    strokes.redo.push(stroke)
+    markLabelMaskChanged(image)
+    return true
+  }
+
+  const redo = () => {
+    const image = currentImage
+    const mask = getCurrentMask()
+    const strokes = image ? history.get(image) : null
+    const stroke = strokes?.redo.pop()
+    if (!image || !mask || !stroke) return false
+
+    restore(mask, stroke.after)
+    strokes.undo.push(stroke)
+    markLabelMaskChanged(image)
+    return true
   }
 
   const render = (canvas, opaque = false) => {
@@ -249,6 +339,7 @@ export const usePainter = () => {
 
   const resetForImage = (image, canvas, mirrorCanvas = null) => {
     if (!resetLabelMask(image)) return
+    history.delete(image)
     if (image !== currentImage) return
     render(canvas)
     render(mirrorCanvas, true)
@@ -302,7 +393,9 @@ export const usePainter = () => {
     paintCurve,
     prepare,
     render,
+    redo,
     resetForImage,
     stamp,
+    undo,
   }
 }

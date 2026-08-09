@@ -1,60 +1,25 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { BRUSH_SIZE, ERASER_LABEL, LABELS, ZOOM } from '../../config.js'
 
-import { BRUSH_SIZE, ERASER_LABEL, LABELS } from './config'
-
-const props = defineProps({
-  resizeWidth: { type: Number, required: true },
+defineProps({
   selectedLabel: { type: Number, required: true },
   brushSize: { type: Number, required: true },
-  busy: { type: Boolean, required: true },
+  zoom: { type: Number, required: true },
   canReset: { type: Boolean, required: true },
 })
 
 const emit = defineEmits([
   'reset-labels',
-  'update:resize-width',
   'update:selected-label',
   'update:brush-size',
+  'update:zoom',
 ])
 
-const widthDraft = ref(String(props.resizeWidth))
-
-watch(
-  () => props.resizeWidth,
-  (width) => {
-    widthDraft.value = String(width)
-  },
-)
-
-const commitWidth = () => {
-  const width = Math.round(Number(widthDraft.value))
-  if (Number.isFinite(width) && width > 0) {
-    widthDraft.value = String(width)
-    emit('update:resize-width', width)
-  } else {
-    widthDraft.value = String(props.resizeWidth)
-  }
-}
 </script>
 
 <template>
   <section class="editor-toolbar" aria-label="Editor controls">
     <div class="editor-toolbar__row">
-      <label class="resize-option">
-        <span>Width</span>
-        <input
-          v-model="widthDraft"
-          type="number"
-          min="1"
-          step="1"
-          :disabled="busy"
-          @keydown.enter="commitWidth"
-          @blur="commitWidth"
-        />
-        <span class="resize-option__unit">px</span>
-      </label>
-
       <div class="label-option" role="group" aria-label="Brush labels">
         <span>Label</span>
         <div class="label-option__buttons">
@@ -66,7 +31,6 @@ const commitWidth = () => {
               'label-option__button--selected': label.value === selectedLabel,
             }"
             type="button"
-            :disabled="busy"
             :style="{ backgroundColor: label.color }"
             :aria-label="'Label ' + label.key"
             :aria-pressed="label.value === selectedLabel"
@@ -80,7 +44,6 @@ const commitWidth = () => {
               'label-option__button--selected': selectedLabel === ERASER_LABEL,
             }"
             type="button"
-            :disabled="busy"
             aria-label="Eraser"
             :aria-pressed="selectedLabel === ERASER_LABEL"
             @click="emit('update:selected-label', ERASER_LABEL)"
@@ -99,32 +62,60 @@ const commitWidth = () => {
           <button
             class="label-option__button label-option__reset"
             type="button"
-            :disabled="!canReset || busy"
-            aria-label="Clear all labels"
-            title="Clear all labels"
+            :disabled="!canReset"
+            aria-label="Clear brush labels from this image"
+            title="Clear brush labels from this image"
             @click="emit('reset-labels')"
           >
-            <span>Clear</span>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 2v11" />
+              <path d="M8 13h8" />
+              <path d="m8 13-3 8h14l-3-8" />
+              <path d="m10 14-1 7M14 14l1 7" />
+            </svg>
           </button>
         </div>
       </div>
 
-      <label class="brush-option">
-        <span>Brush</span>
-        <input
-          type="range"
-          :min="BRUSH_SIZE.min"
-          :max="BRUSH_SIZE.max"
-          :step="BRUSH_SIZE.step"
-          :disabled="busy"
-          :value="brushSize"
-          :aria-valuetext="brushSize + ' px'"
-          @input="emit('update:brush-size', Number($event.target.value))"
-          @pointerup="$event.currentTarget.blur()"
-          @pointercancel="$event.currentTarget.blur()"
-        />
-      </label>
+      <div class="view-options">
+        <label class="brush-option">
+          <span>Brush <kbd aria-hidden="true">b + Wheel</kbd></span>
+          <input
+            type="range"
+            :min="BRUSH_SIZE.min"
+            :max="BRUSH_SIZE.max"
+            :step="BRUSH_SIZE.step"
+            :value="brushSize"
+            :aria-valuetext="brushSize + ' px'"
+            @input="emit('update:brush-size', Number($event.target.value))"
+            @pointerup="$event.currentTarget.blur()"
+            @pointercancel="$event.currentTarget.blur()"
+          />
+        </label>
 
+        <label class="zoom-option">
+          <span>Zoom <kbd aria-hidden="true">z + Wheel</kbd></span>
+          <input
+            type="range"
+            :min="ZOOM.min"
+            :max="ZOOM.max"
+            :step="ZOOM.step"
+            :value="zoom"
+            :aria-valuetext="Math.round(zoom * 100) + ' percent'"
+            @input="emit('update:zoom', Number($event.target.value))"
+            @pointerup="$event.currentTarget.blur()"
+            @pointercancel="$event.currentTarget.blur()"
+          />
+        </label>
+      </div>
     </div>
   </section>
 </template>

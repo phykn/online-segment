@@ -5,8 +5,8 @@ from sklearn.ensemble import RandomForestClassifier
 from app.data.mask import read_item
 from app.api.schema import TrainItem
 from app.config import config
-from app.refine.model import Refiner
 from app.segment import feature, sample
+from app.segment.cuda_forest import CudaForestPredictor
 from app.segment.model import Segmenter
 
 
@@ -67,47 +67,51 @@ def make_data(items: list[TrainItem]) -> tuple[np.ndarray, np.ndarray]:
 def apply(
     items: list[TrainItem],
     segmenter: Segmenter,
-    refiner: Refiner,
 ) -> None:
     x, y = make_data(items)
     segmenter.fit(x, y)
-    refiner.reset()
+
+
+def _labels(
+    probs: np.ndarray,
+    classifier: RandomForestClassifier,
+) -> np.ndarray:
+    return classifier.classes_[np.argmax(probs, axis=2)].astype(np.int8)
 
 
 def infer(
     image: np.ndarray,
     segmenter: Segmenter,
-    refiner: Refiner,
     classifier: RandomForestClassifier | None = None,
-    selected: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     classifier = classifier or segmenter.load()
     probs = segmenter.prob(image, classifier)
-    probs = refiner.adjust(
-        image,
-        probs,
-        classifier.classes_,
-        classifier.model_id_,
-    )
-    labels = classifier.classes_[np.argmax(probs, axis=2)]
+    labels = _labels(probs, classifier)
     uncertain = np.max(probs, axis=2) < cfg.uncertain_threshold
-    if selected is not None:
-        if selected.shape != labels.shape:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="image and mask sizes differ.",
-            )
-        manual = selected >= 0
-        labels[manual] = selected[manual]
-        uncertain[manual] = False
-    return labels.astype(np.int8), uncertain.astype(np.int8)
+    return labels, uncertain.astype(np.int8)
 
 
 def predict(
     image: np.ndarray,
     segmenter: Segmenter,
-    refiner: Refiner,
     classifier: RandomForestClassifier | None = None,
-    selected: np.ndarray | None = None,
 ) -> np.ndarray:
-    return infer(image, segmenter, refiner, classifier, selected)[0]
+    classifier = classifier or segmenter.load()
+    probs = segmenter.prob(image, classifier)
+    return _labels(probs, classifier)
+
+
+def predict_features(
+    stack: np.ndarray,
+    segmenter: Segmenter,
+    classifier: RandomForestClassifier | None = None,
+    predictor: CudaForestPredictor | None = None,
+) -> np.ndarray:
+    if predictor is not None:
+        labels = predictor.predict(stack)
+        if labels is not None:
+            return labels
+
+    classifier = classifier or segmenter.load()
+    probs = segmenter.prob_features(stack, classifier)
+    return _labels(probs, classifier)

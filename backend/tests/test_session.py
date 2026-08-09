@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 from fastapi import HTTPException
 
+from app.segment import feature
 from app.session import SessionStore
 
 
@@ -11,24 +12,21 @@ class SessionTests(unittest.TestCase):
         store = SessionStore(max_age=3600, prefix="online-segment-test")
         first = store.create()
         second = store.create()
-        x = np.zeros((4, 15), dtype=np.float32)
+        x = np.zeros((4, feature.COUNT), dtype=np.float32)
         x[2:] = 1.0
         y = np.array([0, 0, 1, 1], dtype=np.int8)
 
         try:
-            first_model = first.segmenter.fit(x, y)
+            first_segmenter = first.segmenter
+            second_segmenter = second.segmenter
+            first_model = first_segmenter.fit(x, y)
             with self.assertRaises(HTTPException):
-                second.segmenter.load()
+                second_segmenter.load()
 
-            second.segmenter.fit(x, y)
-            self.assertEqual(
-                first.segmenter.load().model_id_,
-                first_model.model_id_,
-            )
-            self.assertNotEqual(
-                first.segmenter.load().model_id_,
-                second.segmenter.load().model_id_,
-            )
+            second_model = second_segmenter.fit(x, y)
+            self.assertIs(first_segmenter.load(), first_model)
+            self.assertIs(second_segmenter.load(), second_model)
+            self.assertIsNot(first_segmenter.load(), second_segmenter.load())
         finally:
             store.close()
 

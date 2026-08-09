@@ -5,6 +5,20 @@ export const BRUSH_SIZE = Object.freeze({
   default: 24,
 })
 
+export const OPACITY = Object.freeze({
+  min: 0,
+  max: 1,
+  step: 0.05,
+  default: 1,
+})
+
+export const ZOOM = Object.freeze({
+  min: 1,
+  max: 8,
+  step: 0.1,
+  default: 1,
+})
+
 export const ERASER_LABEL = -1
 
 export const LABELS = [
@@ -37,3 +51,9 @@ export const LABELS = [
     rgba: [142, 93, 231, 166],
   },
 ]
+
+export const EXPORT = Object.freeze({
+  batchFiles: 16,
+  batchBytes: 128 * 1024 * 1024,
+  progressPollMs: 1000,
+})

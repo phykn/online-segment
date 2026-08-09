@@ -1,25 +1,26 @@
 <script setup>
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-import { BRUSH_SIZE, ERASER_LABEL } from './editor/config'
+import { BRUSH_SIZE, ERASER_LABEL, ZOOM } from '../config.js'
 import {
   clearWheelKeys,
+  isRedoShortcut,
   isTyping,
+  isUndoShortcut,
   keyAction,
   setWheelKey,
 } from './editor/keys'
-import { resizeLabelMask } from './editor/masks'
 import Toolbar from './editor/Toolbar.vue'
 import Workspace from './editor/Workspace.vue'
 import { useImages } from './images/collection'
-import { getOriginalImageSize } from './images/metadata'
 import { useModel } from './model/useModel'
 import { getSession, onSessionChange } from './model/session'
 import Sidebar from './sidebar/Sidebar.vue'
 
-const resizeWidth = ref(1024)
+const resizeWidth = ref(null)
 const selectedLabel = ref(0)
 const brushSize = ref(BRUSH_SIZE.default)
+const zoom = ref(ZOOM.default)
 const workspaceRef = ref(null)
 const sessionId = ref('')
 let stopSession = () => {}
@@ -44,40 +45,44 @@ const model = useModel({
 })
 
 const {
-  sending,
-  refining,
   downloading,
   downloadingAll,
   downloadProgress,
   trained,
-  forceLabels,
   error: modelError,
   resultImage,
   uncertaintyImage,
-  canDownloadMasks,
+  uncertaintyMask,
+  canDownloadResult,
   canDownloadAll,
-  canRefine,
   busy,
   clearError,
   clearResult,
-  refreshLabels,
   resetModel,
   apply,
-  refine,
   predict,
-  setForceLabels,
   downloadAll,
-  downloadMasks,
+  downloadResult,
 } = model
 
 const handleShortcut = (event) => {
   if (isTyping(event.target)) return
+  if (isRedoShortcut(event)) {
+    if (!event.repeat) workspaceRef.value?.redoStroke()
+    event.preventDefault()
+    return
+  }
+  if (isUndoShortcut(event)) {
+    if (!event.repeat) workspaceRef.value?.undoStroke()
+    event.preventDefault()
+    return
+  }
   if (setWheelKey(event.code, true)) {
     event.preventDefault()
     return
   }
 
-  const action = keyAction(event.code)
+  const action = keyAction(event.code, event.key)
   if (!action) return
 
   if (action.name === 'label') {
@@ -86,8 +91,14 @@ const handleShortcut = (event) => {
     selectedLabel.value = ERASER_LABEL
   } else if (action.name === 'apply') {
     if (!event.repeat) void apply()
-  } else if (action.name === 'refine') {
-    if (!event.repeat) void refine()
+  } else if (action.name === 'toggle-uncertainty') {
+    if (!event.repeat) workspaceRef.value?.toggleUncertainty()
+  } else if (action.name === 'toggle-edits') {
+    if (!event.repeat) workspaceRef.value?.toggleEdits()
+  } else if (action.name === 'opacity-up') {
+    workspaceRef.value?.adjustOpacity(0.05)
+  } else if (action.name === 'opacity-down') {
+    workspaceRef.value?.adjustOpacity(-0.05)
   }
   event.preventDefault()
 }
@@ -117,7 +128,7 @@ onBeforeUnmount(() => {
 
 const resetLabels = () => {
   const image = selectedImage.value
-  if (!image) return
+  if (!image || busy.value) return
 
   workspaceRef.value?.resetLabels(image)
   clearError()
@@ -161,13 +172,6 @@ const setWidth = (width) => {
   if (width === resizeWidth.value) return
 
   resizeWidth.value = width
-  for (const image of images.value) {
-    const size = getOriginalImageSize(image)
-    if (!size) continue
-
-    const height = Math.max(1, Math.round((size.height / size.width) * width))
-    resizeLabelMask(image, width, height)
-  }
   clearResult()
   clearError()
   if (trained.value && selectedImage.value) {
@@ -178,7 +182,6 @@ const setWidth = (width) => {
 const handleLabelState = (state) => {
   updateLabelState(state)
   if (state.changed) clearError()
-  if (state.committed) refreshLabels(state.image)
 }
 </script>
 
@@ -188,35 +191,30 @@ const handleLabelState = (state) => {
       :images="images"
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
+      :resize-width="resizeWidth"
       :busy="busy"
       :downloading-all="downloadingAll"
       :download-progress="downloadProgress"
       :can-download-all="canDownloadAll"
-      :labeled-count="labeledImages.size"
-      :sending="sending"
-      :refining="refining"
-      :can-refine="canRefine"
       :model-error="modelError"
       :session-id="sessionId"
       @add-images="addImages"
       @clear-images="clearAllImages"
       @remove-image="removeAt"
       @select-image="selectAt"
-      @apply="apply"
-      @refine="refine"
       @download-all="downloadAll"
+      @update:resize-width="setWidth"
     />
     <div class="editor-main">
       <Toolbar
-        :resize-width="resizeWidth"
         :selected-label="selectedLabel"
         :brush-size="brushSize"
-        :busy="busy"
-        :can-reset="labeledImages.has(selectedImage)"
+        :zoom="zoom"
+        :can-reset="labeledImages.has(selectedImage) && !busy"
         @reset-labels="resetLabels"
-        @update:resize-width="setWidth"
         @update:selected-label="selectedLabel = $event"
         @update:brush-size="brushSize = $event"
+        @update:zoom="zoom = $event"
       />
       <Workspace
         ref="workspaceRef"
@@ -224,16 +222,17 @@ const handleLabelState = (state) => {
         :target-width="resizeWidth"
         :selected-label="selectedLabel"
         :brush-size="brushSize"
+        :zoom="zoom"
         :result-image="resultImage"
         :uncertainty-image="uncertaintyImage"
-        :force-labels="forceLabels"
-        :can-download="canDownloadMasks"
+        :uncertainty-mask="uncertaintyMask"
+        :can-download="canDownloadResult"
         :downloading="downloading"
         :busy="busy"
-        @download="downloadMasks"
-        @update:force-labels="setForceLabels"
+        @download="downloadResult"
         @label-state-change="handleLabelState"
         @update:brush-size="brushSize = $event"
+        @update:zoom="zoom = $event"
       />
     </div>
   </main>

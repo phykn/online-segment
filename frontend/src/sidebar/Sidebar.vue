@@ -1,11 +1,13 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import { filterNewImages, IMAGE_FILE_ACCEPT } from '../images/files'
-import ModelControls from '../editor/ModelControls.vue'
+import {
+  estimateRemainingSeconds,
+  formatDownloadStatus,
+} from '../model/progress'
 import ImageList from './ImageList.vue'
 import MiniList from './MiniList.vue'
-import { useSidebarResize } from './resize'
 
 const props = defineProps({
   images: {
@@ -20,6 +22,10 @@ const props = defineProps({
     type: Set,
     required: true,
   },
+  resizeWidth: {
+    type: Number,
+    default: null,
+  },
   busy: {
     type: Boolean,
     required: true,
@@ -33,22 +39,6 @@ const props = defineProps({
     required: true,
   },
   canDownloadAll: {
-    type: Boolean,
-    required: true,
-  },
-  labeledCount: {
-    type: Number,
-    required: true,
-  },
-  sending: {
-    type: Boolean,
-    required: true,
-  },
-  refining: {
-    type: Boolean,
-    required: true,
-  },
-  canRefine: {
     type: Boolean,
     required: true,
   },
@@ -67,20 +57,91 @@ const emit = defineEmits([
   'clear-images',
   'remove-image',
   'select-image',
-  'apply',
-  'refine',
   'download-all',
+  'update:resize-width',
 ])
 
 const fileInput = ref(null)
 const isDragging = ref(false)
-const {
-  sidebarWidth,
-  collapsed,
-  dragging,
-  startDrag,
-  open,
-} = useSidebarResize()
+const collapsed = ref(false)
+const archiveName = ref('masks')
+const downloadRemainingSeconds = ref(null)
+let downloadStartedAt = 0
+let downloadCountdown = null
+
+const stopDownloadCountdown = () => {
+  if (downloadCountdown !== null) {
+    clearInterval(downloadCountdown)
+    downloadCountdown = null
+  }
+}
+
+const startDownloadCountdown = () => {
+  stopDownloadCountdown()
+  downloadStartedAt = Date.now()
+  downloadRemainingSeconds.value = null
+  downloadCountdown = setInterval(() => {
+    if (downloadRemainingSeconds.value !== null) {
+      downloadRemainingSeconds.value = Math.max(
+        0,
+        downloadRemainingSeconds.value - 1,
+      )
+    }
+  }, 1000)
+}
+
+const downloadStatus = computed(
+  () => formatDownloadStatus(props.downloadProgress, downloadRemainingSeconds.value),
+)
+
+watch(
+  () => [props.downloadingAll, props.downloadProgress],
+  ([downloading, progress], previous = []) => {
+    const [wasDownloading] = previous
+    if (downloading && !wasDownloading) startDownloadCountdown()
+    if (!downloading) {
+      stopDownloadCountdown()
+      downloadRemainingSeconds.value = null
+      return
+    }
+    if (progress > 0) {
+      downloadRemainingSeconds.value = estimateRemainingSeconds(
+        Date.now() - downloadStartedAt,
+        progress,
+      )
+    }
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(stopDownloadCountdown)
+
+const formatWidth = (width) => (width == null ? '' : String(width))
+const widthDraft = ref(formatWidth(props.resizeWidth))
+
+watch(
+  () => props.resizeWidth,
+  (width) => {
+    widthDraft.value = formatWidth(width)
+  },
+)
+
+const commitWidth = () => {
+  const draft = widthDraft.value.trim()
+  if (!draft) {
+    widthDraft.value = ''
+    emit('update:resize-width', null)
+    return
+  }
+
+  const width = Math.round(Number(draft))
+  if (Number.isFinite(width) && width > 0) {
+    widthDraft.value = String(width)
+    emit('update:resize-width', width)
+  } else {
+    widthDraft.value = formatWidth(props.resizeWidth)
+  }
+}
 
 const openFilePicker = () => {
   fileInput.value?.click()
@@ -109,16 +170,21 @@ const handleDragLeave = (event) => {
     isDragging.value = false
   }
 }
+
+const requestDownloadAll = () => {
+  if (props.downloadingAll) {
+    emit('download-all', archiveName.value)
+    return
+  }
+  if (!props.canDownloadAll || props.busy) return
+  emit('download-all', archiveName.value)
+}
 </script>
 
 <template>
   <aside
     class="sidebar"
-    :class="{
-      'sidebar--collapsed': collapsed,
-      'sidebar--dragging': dragging,
-    }"
-    :style="{ '--sidebar-width': sidebarWidth + 'px' }"
+    :class="{ 'sidebar--collapsed': collapsed }"
   >
     <button
       v-if="collapsed"
@@ -126,7 +192,7 @@ const handleDragLeave = (event) => {
       type="button"
       aria-label="Open sidebar"
       title="Open sidebar"
-      @click="open"
+      @click="collapsed = false"
     >
       <svg
         viewBox="0 0 24 24"
@@ -149,6 +215,39 @@ const handleDragLeave = (event) => {
     />
 
     <template v-else>
+    <div class="sidebar__top-controls">
+      <label class="resize-option">
+        <span>Width</span>
+        <input
+          v-model="widthDraft"
+          type="number"
+          min="1"
+          step="1"
+          title="Leave empty to use original image size"
+          @keydown.enter="commitWidth"
+          @blur="commitWidth"
+        />
+        <span class="resize-option__unit">px</span>
+      </label>
+      <button
+        class="sidebar__collapse"
+        type="button"
+        aria-label="Collapse sidebar"
+        title="Collapse sidebar"
+        @click="collapsed = true"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          aria-hidden="true"
+        >
+          <path d="m15 5-7 7 7 7" />
+        </svg>
+      </button>
+    </div>
+
     <input
       ref="fileInput"
       class="visually-hidden"
@@ -198,48 +297,71 @@ const handleDragLeave = (event) => {
     <div class="sidebar__footer">
       <div class="model-actions">
         <button
+          v-if="images.length > 0"
           class="model-button"
           type="button"
-          :disabled="images.length === 0 || props.busy"
+          :disabled="props.busy"
           @click="emit('clear-images')"
         >
-          <span>Clear All Images</span>
+          <span>Clear</span>
         </button>
-        <ModelControls
-          :labeled-count="labeledCount"
-          :sending="sending"
-          :refining="refining"
-          :busy="busy"
-          :can-refine="canRefine"
-          @apply="emit('apply')"
-          @refine="emit('refine')"
-        />
         <p v-if="modelError" class="model-error" role="alert">
           {{ modelError }}
         </p>
-        <button
-          class="model-button model-button--download"
-          type="button"
-          :disabled="!canDownloadAll || props.busy"
-          @click="emit('download-all')"
-        >
-          <span
-            v-if="downloadingAll"
-            class="model-button__progress"
-            :style="{ width: downloadProgress + '%' }"
-            aria-hidden="true"
-          ></span>
-          <span class="model-button__text">
-            {{ downloadingAll ? `Downloading ${downloadProgress}%` : 'Download All' }}
-          </span>
-        </button>
+        <div class="download-all-row">
+          <label class="archive-name">
+            <span class="visually-hidden">ZIP file name</span>
+            <input
+              v-model="archiveName"
+              type="text"
+              maxlength="120"
+              aria-label="ZIP file name"
+              :disabled="props.busy"
+              @keydown.enter.prevent="requestDownloadAll"
+            />
+            <span class="archive-name__suffix">.zip</span>
+          </label>
+          <button
+            class="model-button model-button--download"
+            type="button"
+            :disabled="!downloadingAll && (!canDownloadAll || props.busy)"
+            :aria-label="downloadingAll ? 'Cancel download' : 'Download all'"
+            :title="downloadingAll ? 'Cancel download' : 'Download all'"
+            @click="requestDownloadAll"
+          >
+            <span
+              v-if="downloadingAll"
+              class="model-button__progress"
+              :style="{ width: downloadProgress + '%' }"
+              aria-hidden="true"
+            ></span>
+            <svg
+              v-if="downloadingAll"
+              class="model-button__stop-icon"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <rect
+                x="8.5" y="8.5" width="7" height="7" rx="0.8"
+                fill="currentColor" stroke="none"
+              />
+            </svg>
+            <span class="model-button__text">
+              {{ downloadingAll ? downloadStatus : 'Download' }}
+            </span>
+          </button>
+        </div>
       </div>
 
       <ul class="shortcut-list" aria-label="Canvas controls">
-        <li><kbd>Q W E R</kbd><span>Label</span></li>
         <li><kbd>T</kbd><span>Eraser</span></li>
-        <li><kbd>B + Wheel</kbd><span>Brush size</span></li>
-        <li><kbd>Z + Wheel</kbd><span>Zoom</span></li>
+        <li><kbd>Space</kbd><span>Apply</span></li>
+        <li><kbd>Ctrl + Z</kbd><span>Undo brush</span></li>
+        <li><kbd>Ctrl + Shift + Z</kbd><span>Redo brush</span></li>
         <li><kbd>Middle drag</kbd><span>Pan</span></li>
       </ul>
       <span v-if="sessionId" class="session-id">
@@ -248,11 +370,5 @@ const handleDragLeave = (event) => {
     </div>
     </template>
 
-    <div
-      v-if="!collapsed"
-      class="sidebar__resize"
-      aria-label="Drag left to close sidebar"
-      @pointerdown="startDrag"
-    ></div>
   </aside>
 </template>

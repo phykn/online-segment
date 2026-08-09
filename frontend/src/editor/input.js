@@ -1,6 +1,6 @@
 import { nextTick } from 'vue'
 
-import { BRUSH_SIZE, ERASER_LABEL, LABELS } from './config'
+import { BRUSH_SIZE, ERASER_LABEL, LABELS } from '../../config.js'
 import { wheelAction } from './keys'
 import { useViewport } from './viewport'
 
@@ -11,6 +11,7 @@ export const useCanvasInput = ({
   canvasRef,
   getBrushSize,
   setBrushSize,
+  updateZoom,
   getLabel,
   canEdit,
   start,
@@ -53,6 +54,7 @@ export const useCanvasInput = ({
     event.preventDefault()
     if (action === 'zoom') {
       viewport.handleZoomWheel(event)
+      updateZoom(viewport.zoom.value)
       return
     }
 

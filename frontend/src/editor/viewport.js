@@ -1,9 +1,8 @@
 import { computed, ref } from 'vue'
 
+import { ZOOM } from '../../config.js'
+
 const MIDDLE_BUTTON = 1
-const MIN_ZOOM = 1
-const MAX_ZOOM = 8
-const ZOOM_STEP = 0.1
 const CURSOR_BORDER = 4
 
 const clamp = (value, minimum, maximum) =>
@@ -12,7 +11,7 @@ const clamp = (value, minimum, maximum) =>
 export const useViewport = (canvasRef, getBrushSize) => {
   const cursorVisible = ref(false)
   const cursorStyle = ref({})
-  const zoom = ref(MIN_ZOOM)
+  const zoom = ref(ZOOM.default)
   const panX = ref(0)
   const panY = ref(0)
   const panning = ref(false)
@@ -24,7 +23,7 @@ export const useViewport = (canvasRef, getBrushSize) => {
   )
 
   const reset = () => {
-    zoom.value = MIN_ZOOM
+    zoom.value = ZOOM.default
     panX.value = 0
     panY.value = 0
     panning.value = false
@@ -88,28 +87,31 @@ export const useViewport = (canvasRef, getBrushSize) => {
   }
 
   const clampPan = (width, height) => {
-    const maxX = (width * (zoom.value - MIN_ZOOM)) / 2
-    const maxY = (height * (zoom.value - MIN_ZOOM)) / 2
+    const maxX = (width * (zoom.value - ZOOM.min)) / 2
+    const maxY = (height * (zoom.value - ZOOM.min)) / 2
     panX.value = clamp(panX.value, -maxX, maxX)
     panY.value = clamp(panY.value, -maxY, maxY)
   }
 
-  const handleZoomWheel = (event) => {
+  const setZoom = (value) => {
     const canvas = canvasRef.value
-    const bounds = canvas.getBoundingClientRect()
-    const width = bounds.width / zoom.value
-    const height = bounds.height / zoom.value
-    const direction = event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP
-    zoom.value = clamp(zoom.value + direction, MIN_ZOOM, MAX_ZOOM)
-    zoom.value = Math.round(zoom.value * 10) / 10
+    const bounds = canvas?.getBoundingClientRect()
+    const width = bounds ? bounds.width / zoom.value : 0
+    const height = bounds ? bounds.height / zoom.value : 0
+    zoom.value = Math.round(clamp(value, ZOOM.min, ZOOM.max) * 10) / 10
 
-    if (zoom.value === MIN_ZOOM) {
+    if (zoom.value === ZOOM.min) {
       panX.value = 0
       panY.value = 0
-    } else {
+    } else if (bounds) {
       clampPan(width, height)
     }
     hideCursor()
+  }
+
+  const handleZoomWheel = (event) => {
+    const direction = event.deltaY < 0 ? ZOOM.step : -ZOOM.step
+    setZoom(zoom.value + direction)
   }
 
   const startPan = (event) => {
@@ -117,7 +119,7 @@ export const useViewport = (canvasRef, getBrushSize) => {
 
     event.preventDefault()
     hideCursor()
-    if (zoom.value === MIN_ZOOM) return true
+    if (zoom.value === ZOOM.min) return true
 
     panning.value = true
     lastPanPoint = { x: event.clientX, y: event.clientY }
@@ -148,12 +150,14 @@ export const useViewport = (canvasRef, getBrushSize) => {
     cursorStyle,
     cursorVisible,
     panning,
+    zoom,
     getBrushRadius,
     getCanvasPoint,
     handleZoomWheel,
     hideCursor,
     movePan,
     reset,
+    setZoom,
     startPan,
     stopPan,
     updateCursor,

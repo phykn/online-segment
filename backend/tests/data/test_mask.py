@@ -4,7 +4,7 @@ import numpy as np
 from fastapi import HTTPException
 
 from app.api.schema import Mask
-from app.data.mask import decode, encode
+from app.data.mask import decode, encode, resize
 
 
 class MaskTests(unittest.TestCase):
@@ -29,6 +29,21 @@ class MaskTests(unittest.TestCase):
             decode(mask)
 
         self.assertEqual(caught.exception.status_code, 422)
+
+    def test_resize_uses_nearest_labels(self) -> None:
+        source = np.array([[0, 1], [2, 3]], dtype=np.int8)
+
+        resized = resize(source, 4, 4)
+
+        self.assertEqual(
+            resized.tolist(),
+            [
+                [0, 0, 1, 1],
+                [0, 0, 1, 1],
+                [2, 2, 3, 3],
+                [2, 2, 3, 3],
+            ],
+        )
 
 
 if __name__ == "__main__":

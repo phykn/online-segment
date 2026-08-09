@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { exportAll } from '../src/model/api.js'
+import { setOriginalImageSize } from '../src/images/metadata.js'
 import { resetSession } from '../src/model/session.js'
 
 const namedBlob = (name, value) => {
@@ -9,6 +10,24 @@ const namedBlob = (name, value) => {
   Object.defineProperty(blob, 'name', { value: name })
   return blob
 }
+
+const waitFor = (promise, timeoutMs = 2500) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error('Timed out waiting for export progress.')),
+      timeoutMs,
+    )
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (error) => {
+        clearTimeout(timer)
+        reject(error)
+      },
+    )
+  })
 
 test('exportAll uploads images in bounded batches', async () => {
   resetSession()
@@ -27,7 +46,7 @@ test('exportAll uploads images in bounded batches', async () => {
       return new Response(null, { status: 204 })
     }
     if (url === '/api/export/jobs/export-a') {
-      return Response.json({ status: 'ready', done: 10, total: 10, error: '' })
+      return Response.json({ status: 'ready', done: 17, total: 17, error: '' })
     }
     if (url === '/api/export/jobs/export-a/file') {
       return new Response(new Blob(['zip']))
@@ -37,11 +56,10 @@ test('exportAll uploads images in bounded batches', async () => {
 
   try {
     const result = await exportAll(
-      Array.from({ length: 10 }, (_, index) =>
+      Array.from({ length: 17 }, (_, index) =>
         namedBlob(`${index + 1}.png`, String(index + 1)),
       ),
       512,
-      false,
       (value) => progress.push(value),
     )
     assert.equal(await result.text(), 'zip')
@@ -51,16 +69,224 @@ test('exportAll uploads images in bounded batches', async () => {
   }
 
   const create = calls.find(([url]) => url === '/api/export/jobs')
-  assert.deepEqual(JSON.parse(create[1].body), { total: 10 })
+  assert.deepEqual(JSON.parse(create[1].body), { total: 17 })
 
   const uploads = calls.filter(
     ([url, options]) =>
       url === '/api/export/jobs/export-a' && options.method === 'POST',
   )
   assert.equal(uploads.length, 2)
-  assert.equal(uploads[0][1].body.getAll('files').length, 8)
+  assert.equal(uploads[0][1].body.getAll('files').length, 16)
   assert.equal(uploads[0][1].body.getAll('files')[0].name, '1.png')
-  assert.equal(uploads[1][1].body.getAll('files').length, 2)
-  assert.equal(uploads[1][1].body.getAll('files')[1].name, '10.png')
-  assert.deepEqual(progress, [80, 100])
+  assert.equal(uploads[1][1].body.getAll('files').length, 1)
+  assert.equal(uploads[1][1].body.getAll('files')[0].name, '17.png')
+  assert.equal(uploads[0][1].body.has('labels'), false)
+  assert.deepEqual(progress, [94, 100])
+})
+
+test('exportAll polls progress while a batch upload is pending', async () => {
+  resetSession()
+  const files = Array.from({ length: 16 }, (_, index) =>
+    namedBlob(`${index + 1}.png`, String(index + 1)),
+  )
+  const progress = []
+  let releaseUpload = null
+  let statusCalls = 0
+  let resolveIntermediate
+  const intermediate = new Promise((resolve) => {
+    resolveIntermediate = resolve
+  })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === '/api/sessions') {
+      return Response.json({ id: 'session-poll' })
+    }
+    if (url === '/api/export/jobs' && options.method === 'POST') {
+      return Response.json({ id: 'export-poll' })
+    }
+    if (url === '/api/export/jobs/export-poll' && options.method === 'POST') {
+      return new Promise((resolve) => {
+        releaseUpload = () => resolve(new Response(null, { status: 204 }))
+      })
+    }
+    if (url === '/api/export/jobs/export-poll') {
+      statusCalls += 1
+      if (statusCalls === 1) {
+        return Response.json({
+          status: 'processing',
+          done: 4,
+          total: 16,
+          error: '',
+        })
+      }
+      return Response.json({
+        status: 'ready',
+        done: 16,
+        total: 16,
+        error: '',
+      })
+    }
+    if (url === '/api/export/jobs/export-poll/file') {
+      return new Response(new Blob(['zip']))
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  let exporting
+  try {
+    exporting = exportAll(files, null, (value) => {
+      progress.push(value)
+      if (value === 25) resolveIntermediate()
+    })
+    await waitFor(intermediate)
+    assert.deepEqual(progress, [25])
+    releaseUpload()
+    const result = await exporting
+    assert.equal(await result.text(), 'zip')
+  } finally {
+    if (releaseUpload) releaseUpload()
+    if (exporting) await exporting.catch(() => {})
+    globalThis.fetch = originalFetch
+    resetSession()
+  }
+
+  assert.deepEqual(progress, [25, 100])
+  assert.equal(statusCalls, 2)
+})
+
+test('exportAll cancels the server job when aborted', async () => {
+  resetSession()
+  const controller = new AbortController()
+  const started = new Promise((resolve) => {
+    globalThis.__exportCancelStarted = resolve
+  })
+  let cancelCalls = 0
+  let exporting
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === '/api/sessions') {
+      return Response.json({ id: 'session-cancel' })
+    }
+    if (url === '/api/export/jobs' && options.method === 'POST') {
+      return Response.json({ id: 'export-cancel' })
+    }
+    if (url === '/api/export/jobs/export-cancel' && options.method === 'POST') {
+      globalThis.__exportCancelStarted()
+      return new Promise((resolve, reject) => {
+        const abort = () => reject(new DOMException('Aborted', 'AbortError'))
+        if (options.signal?.aborted) abort()
+        else options.signal?.addEventListener('abort', abort, { once: true })
+      })
+    }
+    if (url === '/api/export/jobs/export-cancel' && options.method === 'DELETE') {
+      cancelCalls += 1
+      return new Response(null, { status: 204 })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  try {
+    exporting = exportAll(
+      [namedBlob('cancel.png', 'image')],
+      null,
+      () => {},
+      controller.signal,
+    )
+    await waitFor(started)
+    controller.abort()
+    await assert.rejects(
+      exporting,
+      (error) => error?.name === 'AbortError',
+    )
+  } finally {
+    if (exporting) await exporting.catch(() => {})
+    globalThis.fetch = originalFetch
+    delete globalThis.__exportCancelStarted
+    resetSession()
+  }
+
+  assert.equal(cancelCalls, 1)
+})
+
+test('exportAll omits width and image decoding when Width is empty', async () => {
+  resetSession()
+  const file = namedBlob('photo.png', 'image')
+  let upload = null
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === '/api/sessions') {
+      return Response.json({ id: 'session-b' })
+    }
+    if (url === '/api/export/jobs' && options.method === 'POST') {
+      return Response.json({ id: 'export-b' })
+    }
+    if (url === '/api/export/jobs/export-b' && options.method === 'POST') {
+      upload = options.body
+      return new Response(null, { status: 204 })
+    }
+    if (url === '/api/export/jobs/export-b') {
+      return Response.json({ status: 'ready', done: 1, total: 1, error: '' })
+    }
+    if (url === '/api/export/jobs/export-b/file') {
+      return new Response(new Blob(['zip']))
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  try {
+    await exportAll([file], null, () => {})
+  } finally {
+    globalThis.fetch = originalFetch
+    resetSession()
+  }
+
+  assert.equal(upload.has('width'), false)
+  assert.equal(upload.getAll('files')[0].name, 'photo.png')
+})
+
+test('exportAll keeps input order when original widths differ', async () => {
+  resetSession()
+  const files = [
+    namedBlob('first.png', 'first'),
+    namedBlob('second.png', 'second'),
+    namedBlob('third.png', 'third'),
+  ]
+  setOriginalImageSize(files[0], 640, 400)
+  setOriginalImageSize(files[1], 800, 500)
+  setOriginalImageSize(files[2], 640, 400)
+  const uploads = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === '/api/sessions') {
+      return Response.json({ id: 'session-c' })
+    }
+    if (url === '/api/export/jobs' && options.method === 'POST') {
+      return Response.json({ id: 'export-c' })
+    }
+    if (url === '/api/export/jobs/export-c' && options.method === 'POST') {
+      uploads.push(options.body)
+      return new Response(null, { status: 204 })
+    }
+    if (url === '/api/export/jobs/export-c') {
+      return Response.json({ status: 'ready', done: 3, total: 3, error: '' })
+    }
+    if (url === '/api/export/jobs/export-c/file') {
+      return new Response(new Blob(['zip']))
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  try {
+    await exportAll(files, null, () => {})
+  } finally {
+    globalThis.fetch = originalFetch
+    resetSession()
+  }
+
+  assert.equal(uploads.length, 1)
+  assert.equal(uploads[0].has('width'), false)
+  assert.deepEqual(
+    uploads[0].getAll('files').map((file) => file.name),
+    ['first.png', 'second.png', 'third.png'],
+  )
 })

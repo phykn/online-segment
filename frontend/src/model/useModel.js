@@ -1,26 +1,20 @@
 import { computed, ref } from 'vue'
 
-import {
-  getLabelMaskSnapshot,
-  hasImageLabels,
-} from '../editor/masks'
-import { getOriginalImageSize } from '../images/metadata'
+import { hasImageLabels } from '../editor/masks.js'
+import { getOriginalImageSize } from '../images/metadata.js'
 import {
   apply as applyApi,
   exportAll,
-  exportMasks,
+  exportMask,
   predict as predictApi,
-  refine as refineApi,
-} from './api'
-import { encodeMask, mergeLabels } from './masks'
+} from './api.js'
 import {
-  archiveName,
   makeResult,
-  maskName,
+  pngName,
   saveBlob,
-} from './output'
-import { isCurrent, ResultCache } from './results'
-import { selectRefineImages } from './refine'
+  zipName,
+} from './output.js'
+import { isCurrent, ResultCache } from './results.js'
 
 export const useModel = ({
   images,
@@ -30,14 +24,12 @@ export const useModel = ({
 }) => {
   const sending = ref(false)
   const predicting = ref(false)
-  const refining = ref(false)
   const downloading = ref(false)
   const downloadingAll = ref(false)
   const downloadProgress = ref(0)
+  let downloadController = null
   const trained = ref(false)
-  const forceLabels = ref(true)
   const revision = ref(0)
-  const refineRound = ref(0)
   const error = ref('')
   const result = ref(null)
   const results = new ResultCache()
@@ -50,6 +42,11 @@ export const useModel = ({
       ? result.value.uncertaintyUrl
       : '',
   )
+  const uncertaintyMask = computed(() =>
+    result.value?.image === selectedImage.value
+      ? result.value.source.uncertain
+      : null,
+  )
   const canDownload = computed(
     () =>
       isCurrent(
@@ -59,21 +56,12 @@ export const useModel = ({
         revision.value,
       ),
   )
-  const canDownloadLabels = computed(() =>
-    labeledImages.value.has(selectedImage.value),
-  )
-  const canDownloadMasks = computed(
-    () => canDownload.value || canDownloadLabels.value,
-  )
+  const canDownloadResult = computed(() => canDownload.value)
   const canDownloadAll = computed(() =>
     trained.value && images.value.length > 0,
   )
-  const canRefine = computed(() =>
-    trained.value && canDownload.value && labeledImages.value.size > 0,
-  )
   const busy = computed(() =>
     sending.value ||
-    refining.value ||
     predicting.value ||
     downloading.value ||
     downloadingAll.value,
@@ -84,12 +72,11 @@ export const useModel = ({
   }
 
   const setResult = (image, width, version, response) => {
-    const labels = getLabelMaskSnapshot(image)
     result.value = results.set(
       image,
       width,
       version,
-      makeResult(response, labels, forceLabels.value),
+      makeResult(response),
     )
   }
 
@@ -112,23 +99,6 @@ export const useModel = ({
     trained.value = false
     updateRevision()
     result.value = null
-  }
-
-  const refreshLabels = (image) => {
-    if (!forceLabels.value) return
-
-    const current = result.value
-    if (
-      !isCurrent(
-        current,
-        image,
-        resizeWidth.value,
-        revision.value,
-      )
-    ) {
-      return
-    }
-    setResult(image, current.width, current.revision, current.source)
   }
 
   const getTrainImages = (first = null) => {
@@ -181,7 +151,6 @@ export const useModel = ({
     try {
       await applyApi(getTrainImages(current))
       trained.value = true
-      refineRound.value = 0
       updateRevision()
       if (!current || !images.value.includes(current)) return
       if (resizeWidth.value !== width) return
@@ -193,51 +162,14 @@ export const useModel = ({
     }
   }
 
-  const refine = async () => {
-    const current = selectedImage.value
-    if (!current || !canRefine.value || busy.value) return
-
-    const width = resizeWidth.value
-    refining.value = true
-    clearError()
-    try {
-      const refineImages = selectRefineImages(
-        images.value,
-        labeledImages.value,
-        current,
-        refineRound.value,
-      )
-      await refineApi(refineImages, width)
-      refineRound.value += 1
-      updateRevision()
-      if (!images.value.includes(current) || resizeWidth.value !== width) return
-      await predict(current, width)
-    } catch (err) {
-      error.value = err.message
-    } finally {
-      refining.value = false
-    }
-  }
-
-  const setForceLabels = (value) => {
-    if (forceLabels.value === value) return
-
-    const image = selectedImage.value
-    const current = canDownload.value ? result.value : null
-    forceLabels.value = value
-    if (image && current) {
-      setResult(image, current.width, current.revision, current.source)
-    }
-  }
-
-  const downloadMasks = async () => {
+  const downloadResult = async () => {
     const image = selectedImage.value
     const current = result.value?.image === image ? result.value : null
-    const labels = image ? getLabelMaskSnapshot(image) : null
     const size = image ? getOriginalImageSize(image) : null
     if (
       !image ||
-      !canDownloadMasks.value ||
+      !current ||
+      !canDownloadResult.value ||
       !size ||
       downloading.value ||
       downloadingAll.value
@@ -248,28 +180,8 @@ export const useModel = ({
     downloading.value = true
     clearError()
     try {
-      const files = []
-      if (current && canDownload.value) {
-        files.push({
-          name: maskName(image, '_result'),
-          mask:
-            forceLabels.value && labels
-              ? mergeLabels(current.mask, labels)
-              : current.mask,
-        })
-      }
-      if (labels && hasImageLabels(image)) {
-        files.push({
-          name: maskName(image, '_drawn'),
-          mask: encodeMask(labels),
-        })
-      }
-      const blob = await exportMasks(
-        files,
-        size.width,
-        size.height,
-      )
-      saveBlob(blob, archiveName(image))
+      const blob = await exportMask(current.mask, size.width, size.height)
+      saveBlob(blob, pngName(image))
     } catch (err) {
       error.value = err.message
     } finally {
@@ -277,9 +189,15 @@ export const useModel = ({
     }
   }
 
-  const downloadAll = async () => {
-    if (!canDownloadAll.value || downloading.value || downloadingAll.value) return
+  const downloadAll = async (archiveName = '') => {
+    if (downloadingAll.value) {
+      downloadController?.abort()
+      return
+    }
+    if (!canDownloadAll.value || downloading.value || busy.value) return
 
+    const controller = new AbortController()
+    downloadController = controller
     downloadingAll.value = true
     downloadProgress.value = 0
     clearError()
@@ -287,16 +205,21 @@ export const useModel = ({
       const blob = await exportAll(
         images.value,
         resizeWidth.value,
-        forceLabels.value,
         (progress) => {
           downloadProgress.value = progress
         },
+        controller.signal,
       )
-      saveBlob(blob, 'masks.zip')
+      saveBlob(blob, zipName(archiveName))
     } catch (err) {
-      error.value = err.message
+      if (err?.name !== 'AbortError') {
+        error.value = err.message
+      }
     } finally {
       downloadingAll.value = false
+      if (downloadController === controller) {
+        downloadController = null
+      }
       downloadProgress.value = 0
     }
   }
@@ -304,28 +227,23 @@ export const useModel = ({
   return {
     sending,
     predicting,
-    refining,
     downloading,
     downloadingAll,
     downloadProgress,
     trained,
-    forceLabels,
     error,
     resultImage,
     uncertaintyImage,
-    canDownloadMasks,
+    uncertaintyMask,
+    canDownloadResult,
     canDownloadAll,
-    canRefine,
     busy,
     clearError,
     clearResult,
-    refreshLabels,
     resetModel,
     apply,
-    refine,
     predict,
-    setForceLabels,
     downloadAll,
-    downloadMasks,
+    downloadResult,
   }
 }

@@ -2,7 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 LabelValue = Literal[-1, 0, 1, 2, 3]
 
 
@@ -21,27 +20,17 @@ class TrainItem(BaseModel):
     mask: Mask
 
 
-class RefineItem(BaseModel):
-    image: str = Field(min_length=1)
-    mask: Mask | None = None
-
-
 class ApplyRequest(BaseModel):
     images: list[TrainItem] = Field(min_length=1)
 
 
 class PredRequest(BaseModel):
     image: str = Field(min_length=1)
-    labels: Mask | None = None
 
 
 class PredResponse(BaseModel):
     mask: Mask
     uncertain: Mask
-
-
-class RefineRequest(BaseModel):
-    images: list[RefineItem] = Field(min_length=1)
 
 
 class ExportRequest(BaseModel):

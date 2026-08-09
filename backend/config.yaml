@@ -10,7 +10,6 @@ session:
 
 model:
   file: model.joblib
-  kind: random_forest
   n_estimators: 200
   max_depth: 10
   max_features: 3
@@ -28,34 +27,11 @@ feature:
   base_size: 512
   factors: [1.0, 2.0, 4.0]
   hessian_factors: [1.0, 2.0, 4.0]
-  log_factors: [2.0, 4.0]
+  context_factors: [8.0, 16.0, 32.0]
   sigma_min: 0.5
   sigma_max: 32.0
   percentiles: [1.0, 99.0]
   cache_mb: 256
-
-edge:
-  radius: 3.0
-  steps: 4
-  unary: 1.0
-  sigma: 0.08
-
-refine:
-  file: refine.pt
-  base: 8
-  dilations: [1, 2, 4]
-  threshold: 0.95
-  max_total: 10000
-  core_scale: 2.0
-  pseudo_weight: 0.25
-  patch: 256
-  batch: 4
-  manual_batch: 3
-  first_steps: 60
-  next_steps: 20
-  lr: 0.001
-  focal_gamma: 1.5
-  ignore: -1
 
 export:
   max_age: 3600
@@ -65,3 +41,23 @@ export:
     - [17, 138, 178]
     - [6, 167, 125]
     - [142, 93, 231]
+
+performance:
+  feature:
+    max_workers: 12
+    parallel_min_pixels: 65536
+  cuda_forest:
+    enabled: true
+    chunk_size: 131072
+    full_chunk_size: 65536
+    early_exit:
+      - trees: 64
+        margin: 0.20
+      - trees: 128
+        margin: 0.10
+      - trees: 192
+        margin: 0.03
+    min_exit_rate: 0.10
+  export:
+    gpu_min_pixels: 16000000
+    png_compress_level: 1

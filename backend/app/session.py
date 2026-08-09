@@ -9,7 +9,6 @@ from uuid import uuid4
 from fastapi import HTTPException, status
 
 from app.config import config
-from app.refine.model import Refiner
 from app.segment.model import Segmenter
 
 
@@ -19,14 +18,12 @@ class ModelSession:
         self.tmp = TemporaryDirectory(prefix=f"{prefix}-")
         root = Path(self.tmp.name)
         self.segmenter = Segmenter(root / config.model.file)
-        self.refiner = Refiner(root / config.refine.file)
         self.lock = RLock()
         self.touched = monotonic()
         self.active = 0
 
     def close(self) -> None:
         self.tmp.cleanup()
-
 
 class SessionStore:
     def __init__(self, max_age: int, prefix: str):

@@ -4,7 +4,9 @@ import test from 'node:test'
 import {
   paintMaskCurve,
   paintMaskLine,
+  usePainter,
 } from '../src/editor/painter.js'
+import { getLabelMask } from '../src/editor/masks.js'
 
 const makeMask = (width, height) => {
   const data = new Int8Array(width * height)
@@ -62,4 +64,62 @@ test('paints a smooth curve without gaps between pointer positions', () => {
     }
     assert.equal(painted, true, `expected a painted pixel at x=${x}`)
   }
+})
+
+test('limits painted pixels to an allowed region', () => {
+  const mask = makeMask(9, 3)
+  const allows = (x) => x >= 5
+
+  paintMaskLine(
+    mask,
+    { x: 1, y: 1 },
+    { x: 7, y: 1 },
+    1,
+    2,
+    allows,
+  )
+
+  for (let y = 0; y < mask.height; y += 1) {
+    for (let x = 0; x < 5; x += 1) {
+      assert.equal(mask.data[y * mask.width + x], -1)
+    }
+  }
+  assert.ok(mask.labeledCount > 0)
+})
+
+test('undoes one complete drag as a single brush stroke', () => {
+  const context = {
+    beginPath: () => {},
+    arc: () => {},
+    fill: () => {},
+    save: () => {},
+    restore: () => {},
+  }
+  const canvas = { getContext: () => context }
+  const image = {}
+  const painter = usePainter()
+  painter.prepare(image, 5, 3)
+
+  painter.beginStroke()
+  painter.stamp(canvas, { x: 0, y: 1 }, 0.4, 1)
+  assert.equal(painter.commitStroke(), true)
+
+  painter.beginStroke()
+  painter.stamp(canvas, { x: 2, y: 1 }, 0.4, 2)
+  painter.stamp(canvas, { x: 3, y: 1 }, 0.4, 2)
+  assert.equal(painter.commitStroke(), true)
+
+  assert.equal(painter.undo(), true)
+  assert.deepEqual(
+    Array.from(getLabelMask(image).data.slice(5, 10)),
+    [1, -1, -1, -1, -1],
+  )
+  assert.equal(painter.redo(), true)
+  assert.deepEqual(
+    Array.from(getLabelMask(image).data.slice(5, 10)),
+    [1, -1, 2, 2, -1],
+  )
+  assert.equal(painter.undo(), true)
+  assert.equal(painter.undo(), true)
+  assert.equal(getLabelMask(image).labeledCount, 0)
 })

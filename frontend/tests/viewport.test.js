@@ -32,3 +32,16 @@ test('uses middle-button drag for panning instead of right-button drag', () => {
   assert.equal(viewport.startPan(middle), true)
   assert.equal(prevented, true)
 })
+
+test('clamps zoom set by a control', () => {
+  const canvas = {
+    getBoundingClientRect: () => ({ width: 100, height: 100 }),
+  }
+  const viewport = useViewport(ref(canvas), () => 24)
+
+  viewport.setZoom(20)
+  assert.equal(viewport.zoom.value, 8)
+
+  viewport.setZoom(0)
+  assert.equal(viewport.zoom.value, 1)
+})

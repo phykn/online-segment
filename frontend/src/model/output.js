@@ -1,5 +1,4 @@
-import { LABELS } from '../editor/config.js'
-import { clearSelected, mergeLabels } from './masks.js'
+import { LABELS } from '../../config.js'
 
 const imageUrl = (mask, color) => {
   const canvas = document.createElement('canvas')
@@ -31,35 +30,30 @@ const maskUrl = (mask) =>
 
 const uncertainUrl = (mask) =>
   imageUrl(mask, (uncertain) =>
-    uncertain ? [255, 145, 40, 115] : null,
+    uncertain ? [255, 255, 0, 255] : null,
   )
 
-export const makeResult = (response, labels = null, forceLabels = false) => {
-  const mask = forceLabels && labels
-    ? mergeLabels(response.mask, labels)
-    : response.mask
-  const uncertain = forceLabels && labels
-    ? clearSelected(response.uncertain, labels)
-    : response.uncertain
-
+export const makeResult = (response) => {
   return {
     source: response,
-    mask,
-    url: maskUrl(mask),
-    uncertaintyUrl: uncertainUrl(uncertain),
+    mask: response.mask,
+    url: maskUrl(response.mask),
+    uncertaintyUrl: uncertainUrl(response.uncertain),
   }
 }
 
-export const maskName = (image, kind = '') => {
+export const pngName = (image) => {
   const dot = image.name.lastIndexOf('.')
   const name = dot > 0 ? image.name.slice(0, dot) : image.name
-  return `${name}${kind}_mask.png`
+  return `${name}.png`
 }
 
-export const archiveName = (image) => {
-  const dot = image.name.lastIndexOf('.')
-  const name = dot > 0 ? image.name.slice(0, dot) : image.name
-  return `${name}_masks.zip`
+export const zipName = (value) => {
+  const requested = String(value ?? '').trim().replace(/\.zip$/i, '')
+  const safe = requested
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+    .replace(/[. ]+$/g, '')
+  return `${safe || 'masks'}.zip`
 }
 
 export const saveBlob = (blob, name) => {

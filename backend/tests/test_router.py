@@ -1,7 +1,15 @@
 import unittest
+from threading import RLock
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from app.api.router import create_session, health_check, read_session
-from app.api.schema import RefineRequest
+from app.api.router import (
+    apply_model,
+    create_session,
+    cancel_job,
+    health_check,
+    read_session,
+)
 from app.main import app
 from app.session import sessions
 
@@ -35,7 +43,6 @@ class RouterTests(unittest.TestCase):
                 "/api/export/jobs/{job_id}/file",
                 "/api/health",
                 "/api/predict",
-                "/api/refine",
                 "/api/sessions",
             },
         )
@@ -45,13 +52,25 @@ class RouterTests(unittest.TestCase):
 
         self.assertNotIn("/api/training-data", paths)
 
-    def test_refine_accepts_unlabeled_images_without_a_target(self) -> None:
-        payload = RefineRequest.model_validate(
-            {"images": [{"image": "encoded", "mask": None}]}
+    def test_apply_uses_the_session_model(self) -> None:
+        session = SimpleNamespace(
+            lock=RLock(),
+            segmenter=object(),
         )
+        payload = SimpleNamespace(images=[object()])
 
-        self.assertIsNone(payload.images[0].mask)
-        self.assertNotIn("target", payload.model_dump())
+        with patch("app.api.router.actions.apply") as apply:
+            apply_model(payload, session)
+
+        apply.assert_called_once_with(payload.images, session.segmenter)
+
+    def test_cancel_job_uses_session_owner(self) -> None:
+        session = SimpleNamespace(id="session-a")
+
+        with patch("app.api.router.jobs.cancel") as cancel:
+            cancel_job("job-a", session)
+
+        cancel.assert_called_once_with("job-a", "session-a")
 
 
 if __name__ == "__main__":

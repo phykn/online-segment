@@ -16,7 +16,6 @@ class SessionConfig(BaseModel):
 
 class ModelConfig(BaseModel):
     file: str = Field(min_length=1)
-    kind: str = Field(min_length=1)
     n_estimators: int = Field(gt=0)
     max_depth: int = Field(gt=0)
     max_features: int = Field(gt=0)
@@ -41,7 +40,7 @@ class FeatureConfig(BaseModel):
     base_size: int = Field(gt=0)
     factors: tuple[float, ...] = Field(min_length=1)
     hessian_factors: tuple[float, ...]
-    log_factors: tuple[float, ...]
+    context_factors: tuple[float, ...] = Field(min_length=1)
     sigma_min: float = Field(gt=0.0)
     sigma_max: float = Field(gt=0.0)
     percentiles: tuple[float, float]
@@ -49,46 +48,15 @@ class FeatureConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_scales(self):
+        if any(value <= 0 for value in (*self.factors, *self.context_factors)):
+            raise ValueError("feature factors must be positive")
         values = set(self.factors)
         if not set(self.hessian_factors) <= values:
             raise ValueError("hessian_factors must be included in factors")
-        if not set(self.log_factors) <= set(self.hessian_factors):
-            raise ValueError("log_factors must be included in hessian_factors")
         if self.sigma_min > self.sigma_max:
             raise ValueError("sigma_min must not exceed sigma_max")
         if self.percentiles[0] >= self.percentiles[1]:
             raise ValueError("percentiles must be increasing")
-        return self
-
-
-class EdgeConfig(BaseModel):
-    radius: float = Field(gt=0.0)
-    steps: int = Field(gt=0)
-    unary: float = Field(gt=0.0)
-    sigma: float = Field(gt=0.0)
-
-
-class RefineConfig(BaseModel):
-    file: str = Field(min_length=1)
-    base: int = Field(gt=0)
-    dilations: tuple[int, ...] = Field(min_length=1)
-    threshold: float = Field(gt=0.0, le=1.0)
-    max_total: int = Field(gt=0)
-    core_scale: float = Field(gt=0.0)
-    pseudo_weight: float = Field(gt=0.0, le=1.0)
-    patch: int = Field(gt=0)
-    batch: int = Field(gt=0)
-    manual_batch: int = Field(gt=0)
-    first_steps: int = Field(gt=0)
-    next_steps: int = Field(gt=0)
-    lr: float = Field(gt=0.0)
-    focal_gamma: float = Field(ge=0.0)
-    ignore: int
-
-    @model_validator(mode="after")
-    def validate_batch(self):
-        if self.manual_batch > self.batch:
-            raise ValueError("manual_batch must not exceed batch")
         return self
 
 
@@ -104,15 +72,50 @@ class ExportConfig(BaseModel):
         return self
 
 
+class FeaturePerformanceConfig(BaseModel):
+    max_workers: int = Field(gt=0)
+    parallel_min_pixels: int = Field(gt=0)
+
+
+class CudaEarlyExitConfig(BaseModel):
+    trees: int = Field(gt=0)
+    margin: float = Field(ge=0.0, le=1.0)
+
+
+class CudaForestPerformanceConfig(BaseModel):
+    enabled: bool
+    chunk_size: int = Field(gt=0)
+    full_chunk_size: int = Field(gt=0)
+    early_exit: tuple[CudaEarlyExitConfig, ...] = Field(min_length=1)
+    min_exit_rate: float = Field(ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_early_exit(self):
+        trees = [stage.trees for stage in self.early_exit]
+        if trees != sorted(set(trees)):
+            raise ValueError("early-exit tree counts must be increasing")
+        return self
+
+
+class ExportPerformanceConfig(BaseModel):
+    gpu_min_pixels: int = Field(gt=0)
+    png_compress_level: int = Field(ge=0, le=9)
+
+
+class PerformanceConfig(BaseModel):
+    feature: FeaturePerformanceConfig
+    cuda_forest: CudaForestPerformanceConfig
+    export: ExportPerformanceConfig
+
+
 class Config(BaseModel):
     server: ServerConfig
     session: SessionConfig
     model: ModelConfig
     feature: FeatureConfig
-    edge: EdgeConfig
-    refine: RefineConfig
     export: ExportConfig
+    performance: PerformanceConfig
 
 
-path = Path(__file__).with_name("config.yaml")
+path = Path(__file__).parents[1] / "config.yaml"
 config = Config.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
