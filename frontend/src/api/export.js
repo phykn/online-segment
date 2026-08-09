@@ -1,80 +1,6 @@
 import { EXPORT } from '../../config.js'
-import { getLabelMaskSnapshot } from '../editor/masks.js'
-import { decodeImage } from '../images/decode.js'
-import { setOriginalImageSize } from '../images/metadata.js'
-import { encodeMask } from './masks.js'
+import { API_URL, readError } from './http.js'
 import { sessionFetch } from './session.js'
-
-const API_URL = '/api'
-
-const readError = async (response, fallback) => {
-  try {
-    const body = await response.json()
-    return typeof body.detail === 'string' ? body.detail : fallback
-  } catch {
-    return fallback
-  }
-}
-
-const encodeImage = async (file, targetWidth = null) => {
-  const decoded = await decodeImage(file)
-
-  try {
-    setOriginalImageSize(file, decoded.width, decoded.height)
-    const width = targetWidth == null
-      ? decoded.width
-      : Math.max(1, Math.round(targetWidth))
-    const height = targetWidth == null
-      ? decoded.height
-      : Math.max(1, Math.round((decoded.height / decoded.width) * width))
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const context = canvas.getContext('2d')
-    context.imageSmoothingEnabled = true
-    context.imageSmoothingQuality = 'high'
-    context.drawImage(decoded.source, 0, 0, width, height)
-    return canvas.toDataURL('image/png').split(',', 2)[1]
-  } finally {
-    decoded.dispose()
-  }
-}
-
-const makeItem = async (file) => {
-  const mask = getLabelMaskSnapshot(file)
-  return {
-    image: await encodeImage(file),
-    mask: encodeMask(mask),
-  }
-}
-
-export const apply = async (images) => {
-  const items = await Promise.all(images.map(makeItem))
-  const response = await sessionFetch('/apply', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ images: items }),
-  })
-
-  if (!response.ok) {
-    throw new Error(await readError(response, 'Could not train the model.'))
-  }
-}
-
-export const predict = async (file, width) => {
-  const response = await sessionFetch('/predict', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      image: await encodeImage(file, width),
-    }),
-  })
-
-  if (!response.ok) {
-    throw new Error(await readError(response, 'Could not predict the image.'))
-  }
-  return response.json()
-}
 
 export const exportMask = async (mask, width, height) => {
   const response = await fetch(`${API_URL}/export`, {
@@ -99,7 +25,11 @@ const createExport = async (total, signal) => {
   if (!response.ok) {
     throw new Error(await readError(response, 'Could not start the export.'))
   }
-  return response.json()
+  const body = await response.json()
+  if (typeof body.id !== 'string' || !body.id) {
+    throw new Error('Could not start the export.')
+  }
+  return body.id
 }
 
 const runExport = async (id, files, width, signal) => {
@@ -141,9 +71,6 @@ const makeExportBatches = (files) => {
   return batches
 }
 
-const makeExportPlans = (files, width) =>
-  makeExportBatches(files).map((batch) => ({ batch, width }))
-
 const getExport = async (id, signal) => {
   const response = await sessionFetch(`/export/jobs/${id}`, { signal })
   if (!response.ok) {
@@ -152,24 +79,52 @@ const getExport = async (id, signal) => {
   return response.json()
 }
 
-const pollWhilePending = async (work, poll) => {
-  let pending = true
+const pollWhilePending = async (work, poll, signal) => {
+  const pollController = new AbortController()
+  let stopped = false
+  let resolveStopped
+  const stop = new Promise((resolve) => {
+    resolveStopped = resolve
+  })
   let cancelWait = null
+
+  const stopPolling = () => {
+    if (stopped) return
+    stopped = true
+    if (cancelWait) cancelWait()
+    pollController.abort()
+    resolveStopped()
+  }
+  const handleAbort = () => stopPolling()
+  if (signal?.aborted) stopPolling()
+  else signal?.addEventListener('abort', handleAbort, { once: true })
+
   const polling = (async () => {
-    while (pending) {
-      const elapsed = await new Promise((resolve) => {
-        const timer = setTimeout(() => resolve(true), EXPORT.progressPollMs)
-        cancelWait = () => {
-          clearTimeout(timer)
-          resolve(false)
-        }
-      })
+    while (!stopped) {
+      const elapsed = await Promise.race([
+        new Promise((resolve) => {
+          const timer = setTimeout(
+            () => resolve(true),
+            EXPORT.progressPollMs,
+          )
+          cancelWait = () => {
+            clearTimeout(timer)
+            resolve(false)
+          }
+        }),
+        stop.then(() => false),
+      ])
       cancelWait = null
-      if (!elapsed || !pending) return
+      if (!elapsed || stopped) return
 
       try {
-        await poll()
-      } catch {
+        await Promise.race([
+          poll(pollController.signal),
+          stop,
+        ])
+        if (stopped) return
+      } catch (error) {
+        if (error?.name === 'AbortError') return
         return
       }
     }
@@ -178,9 +133,9 @@ const pollWhilePending = async (work, poll) => {
   try {
     return await work
   } finally {
-    pending = false
-    if (cancelWait) cancelWait()
+    stopPolling()
     await polling
+    signal?.removeEventListener('abort', handleAbort)
   }
 }
 
@@ -208,9 +163,10 @@ export const exportAll = async (
   signal,
 ) => {
   let id = null
+  let completed = false
   try {
-    ({ id } = await createExport(files.length, signal))
-    const plans = makeExportPlans(files, width)
+    id = await createExport(files.length, signal)
+    const batches = makeExportBatches(files)
     let lastProgress = 0
     const reportProgress = (done, total) => {
       if (
@@ -231,26 +187,26 @@ export const exportAll = async (
 
     let done = 0
     const uploads = (async () => {
-      for (const plan of plans) {
-        await runExport(id, plan.batch, plan.width, signal)
-        done += plan.batch.length
+      for (const batch of batches) {
+        await runExport(id, batch, width, signal)
+        done += batch.length
         reportProgress(done, files.length)
       }
     })()
-    await pollWhilePending(uploads, async () => {
-      const state = await getExport(id, signal)
+    await pollWhilePending(uploads, async (pollSignal) => {
+      const state = await getExport(id, pollSignal)
+      if (pollSignal.aborted) return
       reportProgress(state.done, state.total)
-    })
+    }, signal)
 
     const state = await getExport(id, signal)
     if (state.status !== 'ready') {
       throw new Error(state.error || 'Could not export the images.')
     }
-    return getExportFile(id, signal)
-  } catch (error) {
-    if (error?.name === 'AbortError' && id) {
-      await cancelExport(id).catch(() => {})
-    }
-    throw error
+    const blob = await getExportFile(id, signal)
+    completed = true
+    return blob
+  } finally {
+    if (id && !completed) await cancelExport(id).catch(() => {})
   }
 }

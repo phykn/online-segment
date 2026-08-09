@@ -1,8 +1,9 @@
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from threading import Event, RLock
+from threading import Barrier, Event, RLock
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from zipfile import ZipFile
@@ -11,8 +12,9 @@ import numpy as np
 from PIL import Image
 
 from app.config import config
-from app.export.files import append_archive_batch, make_mask_archive, make_png
+from app.export.archive import make_mask_archive, make_png
 from app.export.jobs import JobStore
+from app.export.pipeline import append_archive_batch
 
 
 class ExportTests(unittest.TestCase):
@@ -82,9 +84,9 @@ class ExportTests(unittest.TestCase):
             )
 
             with (
-                patch("app.export.files.jobs", store),
+                patch("app.export.pipeline.jobs", store),
                 patch(
-                    "app.export.files.actions.predict_features",
+                    "app.export.pipeline.prediction.predict_features",
                     side_effect=lambda stack, segmenter, model: stack[
                         ..., 0
                     ].astype(np.int8),
@@ -159,9 +161,9 @@ class ExportTests(unittest.TestCase):
             )
 
             with (
-                patch("app.export.files.jobs", store),
+                patch("app.export.pipeline.jobs", store),
                 patch(
-                    "app.export.files.actions.predict_features",
+                    "app.export.pipeline.prediction.predict_features",
                     side_effect=predict_features,
                 ),
             ):
@@ -221,14 +223,14 @@ class ExportTests(unittest.TestCase):
             )
 
             with (
-                patch("app.export.files.jobs", store),
+                patch("app.export.pipeline.jobs", store),
                 patch.object(
                     config.performance.export,
                     "gpu_min_pixels",
                     4,
                 ),
                 patch(
-                    "app.export.files.actions.predict_features",
+                    "app.export.pipeline.prediction.predict_features",
                     return_value=np.zeros((1, 2), dtype=np.int8),
                 ) as predict,
             ):
@@ -278,9 +280,9 @@ class ExportTests(unittest.TestCase):
             )
 
             with (
-                patch("app.export.files.jobs", store),
+                patch("app.export.pipeline.jobs", store),
                 patch(
-                    "app.export.files.actions.predict_features",
+                    "app.export.pipeline.prediction.predict_features",
                     return_value=np.zeros((1, 2), dtype=np.int8),
                 ),
                 self.assertRaisesRegex(
@@ -302,6 +304,71 @@ class ExportTests(unittest.TestCase):
             self.assertEqual(state["status"], "error")
             self.assertEqual(state["done"], 1)
             self.assertFalse(Path(store.temp_path(job_id)).exists())
+
+    def test_concurrent_duplicate_batch_preserves_completed_archive(self) -> None:
+        source = BytesIO()
+        Image.new("RGB", (2, 1), "white").save(source, format="PNG")
+        image_bytes = source.getvalue()
+
+        class ContendedLock:
+            def __init__(self) -> None:
+                self.barrier = Barrier(2)
+                self.lock = RLock()
+
+            def __enter__(self):
+                self.barrier.wait(timeout=5)
+                self.lock.acquire()
+                return self
+
+            def __exit__(self, *_) -> None:
+                self.lock.release()
+
+        with TemporaryDirectory() as tmp:
+            store = JobStore(Path(tmp), max_age=3600, prefix="test")
+            job_id = store.create("session-a")
+            store.start(job_id, "session-a", 1)
+            session = SimpleNamespace(
+                id="session-a",
+                lock=ContendedLock(),
+                segmenter=SimpleNamespace(
+                    load=Mock(return_value=object()),
+                    features=Mock(
+                        return_value=np.zeros((1, 2, 1), dtype=np.float32)
+                    ),
+                ),
+            )
+
+            with (
+                patch("app.export.pipeline.jobs", store),
+                patch(
+                    "app.export.pipeline.prediction.predict_features",
+                    return_value=np.zeros((1, 2), dtype=np.int8),
+                ),
+                ThreadPoolExecutor(max_workers=2) as pool,
+            ):
+                futures = [
+                    pool.submit(
+                        append_archive_batch,
+                        job_id,
+                        None,
+                        [(f"{idx}.png", BytesIO(image_bytes))],
+                        session,
+                    )
+                    for idx in range(2)
+                ]
+                errors = []
+                for future in futures:
+                    try:
+                        future.result(timeout=5)
+                    except Exception as error:
+                        errors.append(error)
+
+            state = store.get(job_id, session.id)
+            self.assertEqual(state["status"], "ready")
+            self.assertEqual(state["done"], 1)
+            self.assertTrue(Path(store.path(job_id, session.id)).exists())
+            self.assertEqual(len(errors), 1)
+            self.assertEqual(errors[0].status_code, 409)
 
 if __name__ == "__main__":
     unittest.main()

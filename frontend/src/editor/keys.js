@@ -20,13 +20,16 @@ export const keyAction = (code, key = '') => {
   return null
 }
 
-export const isTyping = (target) =>
-  (target?.tagName === 'INPUT' &&
-    !['button', 'checkbox', 'file', 'radio', 'range', 'reset', 'submit'].includes(
-      target?.type,
-    )) ||
-  ['TEXTAREA', 'SELECT'].includes(target?.tagName) ||
-  Boolean(target?.isContentEditable)
+const INTERACTIVE_TAGS = new Set(['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'])
+
+export const isInteractiveTarget = (target) =>
+  INTERACTIVE_TAGS.has(target?.tagName) ||
+  Boolean(target?.isContentEditable) ||
+  Boolean(
+    target?.closest?.(
+      'a[href], [role="button"], [role="checkbox"], [role="slider"]',
+    ),
+  )
 
 export const isUndoShortcut = (event) =>
   event.code === 'KeyZ' &&

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   clearWheelKeys,
-  isTyping,
+  isInteractiveTarget,
   isRedoShortcut,
   isUndoShortcut,
   keyAction,
@@ -30,16 +30,21 @@ test('maps label, eraser, and apply shortcuts', () => {
   assert.equal(keyAction('Delete'), null)
 })
 
-test('ignores shortcuts only while typing', () => {
-  assert.equal(isTyping({ tagName: 'INPUT' }), true)
-  assert.equal(isTyping({ tagName: 'INPUT', type: 'number' }), true)
-  assert.equal(isTyping({ tagName: 'INPUT', type: 'range' }), false)
-  assert.equal(isTyping({ tagName: 'INPUT', type: 'checkbox' }), false)
-  assert.equal(isTyping({ tagName: 'INPUT', type: 'file' }), false)
-  assert.equal(isTyping({ tagName: 'TEXTAREA' }), true)
-  assert.equal(isTyping({ tagName: 'SELECT' }), true)
-  assert.equal(isTyping({ isContentEditable: true }), true)
-  assert.equal(isTyping({ tagName: 'BUTTON' }), false)
+test('ignores shortcuts for every interactive target', () => {
+  assert.equal(isInteractiveTarget({ tagName: 'INPUT' }), true)
+  assert.equal(isInteractiveTarget({ tagName: 'INPUT', type: 'number' }), true)
+  assert.equal(isInteractiveTarget({ tagName: 'INPUT', type: 'range' }), true)
+  assert.equal(isInteractiveTarget({ tagName: 'INPUT', type: 'checkbox' }), true)
+  assert.equal(isInteractiveTarget({ tagName: 'INPUT', type: 'file' }), true)
+  assert.equal(isInteractiveTarget({ tagName: 'TEXTAREA' }), true)
+  assert.equal(isInteractiveTarget({ tagName: 'SELECT' }), true)
+  assert.equal(isInteractiveTarget({ tagName: 'BUTTON' }), true)
+  assert.equal(isInteractiveTarget({ isContentEditable: true }), true)
+  assert.equal(
+    isInteractiveTarget({ closest: () => ({ tagName: 'A' }) }),
+    true,
+  )
+  assert.equal(isInteractiveTarget({ tagName: 'CANVAS' }), false)
 })
 
 test('uses B and Z as wheel modes', () => {

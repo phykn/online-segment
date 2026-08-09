@@ -3,13 +3,12 @@ from threading import RLock
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.api.router import (
-    apply_model,
-    create_session,
-    cancel_job,
-    health_check,
-    read_session,
-)
+import numpy as np
+
+from app.api.dependencies import read_session
+from app.api.export import cancel_job
+from app.api.model import apply_model, predict
+from app.api.router import create_session, health_check
 from app.main import app
 from app.session import sessions
 
@@ -59,15 +58,37 @@ class RouterTests(unittest.TestCase):
         )
         payload = SimpleNamespace(images=[object()])
 
-        with patch("app.api.router.actions.apply") as apply:
+        with patch("app.api.model.training.apply") as apply:
             apply_model(payload, session)
 
         apply.assert_called_once_with(payload.images, session.segmenter)
 
+    def test_predict_keeps_the_public_mask_schema(self) -> None:
+        session = SimpleNamespace(lock=RLock(), segmenter=object())
+        payload = SimpleNamespace(image="encoded")
+        labels = np.array([[0, 0, 1]], dtype=np.int8)
+        uncertain = np.array([[0, 1, 1]], dtype=np.int8)
+
+        with (
+            patch("app.api.model.read_image", return_value=object()),
+            patch(
+                "app.api.model.prediction.infer",
+                return_value=(labels, uncertain),
+            ),
+        ):
+            response = predict(payload, session)
+
+        self.assertEqual(response.mask.model_dump(), {
+            "width": 3,
+            "height": 1,
+            "runs": [(0, 2), (1, 1)],
+        })
+        self.assertEqual(response.uncertain.runs, [(0, 1), (1, 2)])
+
     def test_cancel_job_uses_session_owner(self) -> None:
         session = SimpleNamespace(id="session-a")
 
-        with patch("app.api.router.jobs.cancel") as cancel:
+        with patch("app.api.export.jobs.cancel") as cancel:
             cancel_job("job-a", session)
 
         cancel.assert_called_once_with("job-a", "session-a")

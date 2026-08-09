@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 import numpy as np
 
-from app import actions
+from app.segment import prediction
 
 
 class PredictTests(unittest.TestCase):
@@ -18,7 +18,7 @@ class PredictTests(unittest.TestCase):
         segmenter = Mock()
         segmenter.prob.return_value = probs
 
-        result = actions.predict(image, segmenter, classifier)
+        result = prediction.predict(image, segmenter, classifier)
 
         segmenter.prob.assert_called_once_with(image, classifier)
         self.assertTrue((result == 0).all())
@@ -33,7 +33,7 @@ class PredictTests(unittest.TestCase):
         segmenter = Mock()
         segmenter.prob_features.return_value = probs
 
-        result = actions.predict_features(stack, segmenter, classifier)
+        result = prediction.predict_features(stack, segmenter, classifier)
 
         segmenter.prob_features.assert_called_once_with(stack, classifier)
         self.assertTrue((result == 1).all())
@@ -45,7 +45,7 @@ class PredictTests(unittest.TestCase):
         predictor.predict.return_value = expected
         segmenter = Mock()
 
-        result = actions.predict_features(
+        result = prediction.predict_features(
             stack,
             segmenter,
             Mock(),
@@ -68,7 +68,7 @@ class PredictTests(unittest.TestCase):
         segmenter = Mock()
         segmenter.prob_features.return_value = probs
 
-        result = actions.predict_features(
+        result = prediction.predict_features(
             stack,
             segmenter,
             classifier,
@@ -91,7 +91,7 @@ class PredictTests(unittest.TestCase):
         segmenter = Mock()
         segmenter.prob.return_value = probs
 
-        mask, uncertain = actions.infer(image, segmenter, classifier)
+        mask, uncertain = prediction.infer(image, segmenter, classifier)
 
         self.assertEqual(mask.tolist(), [[0, 0]])
         self.assertEqual(uncertain.tolist(), [[0, 1]])

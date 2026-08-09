@@ -1,5 +1,7 @@
 import * as UTIF from 'utif'
 
+import { orientRgba } from './orientation.js'
+
 const isTiff = (file) => {
   const extension = file.name.split('.').pop()?.toLowerCase()
   return extension === 'tif' || extension === 'tiff'
@@ -13,15 +15,28 @@ const decodeTiff = async (file) => {
   const page = pages[0]
   UTIF.decodeImage(buffer, page)
 
+  const decoded = UTIF.toRGBA8(page)
+  const rgba =
+    decoded instanceof Uint8ClampedArray
+      ? decoded
+      : new Uint8ClampedArray(
+          decoded.buffer,
+          decoded.byteOffset,
+          decoded.byteLength,
+        )
+  const oriented = orientRgba(rgba, page.width, page.height, page.t274)
   const canvas = document.createElement('canvas')
-  canvas.width = page.width
-  canvas.height = page.height
+  canvas.width = oriented.width
+  canvas.height = oriented.height
 
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Could not create the image canvas.')
 
-  const rgba = new Uint8ClampedArray(UTIF.toRGBA8(page))
-  context.putImageData(new ImageData(rgba, page.width, page.height), 0, 0)
+  context.putImageData(
+    new ImageData(oriented.data, oriented.width, oriented.height),
+    0,
+    0,
+  )
   return canvas
 }
 

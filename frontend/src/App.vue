@@ -4,8 +4,8 @@ import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { BRUSH_SIZE, ERASER_LABEL, ZOOM } from '../config.js'
 import {
   clearWheelKeys,
+  isInteractiveTarget,
   isRedoShortcut,
-  isTyping,
   isUndoShortcut,
   keyAction,
   setWheelKey,
@@ -13,8 +13,8 @@ import {
 import Toolbar from './editor/Toolbar.vue'
 import Workspace from './editor/Workspace.vue'
 import { useImages } from './images/collection'
+import { getSession, onSessionChange } from './api/session'
 import { useModel } from './model/useModel'
-import { getSession, onSessionChange } from './model/session'
 import Sidebar from './sidebar/Sidebar.vue'
 
 const resizeWidth = ref(null)
@@ -66,7 +66,7 @@ const {
 } = model
 
 const handleShortcut = (event) => {
-  if (isTyping(event.target)) return
+  if (isInteractiveTarget(event.target)) return
   if (isRedoShortcut(event)) {
     if (!event.repeat) workspaceRef.value?.redoStroke()
     event.preventDefault()

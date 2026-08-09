@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { pngName, zipName } from '../src/model/output.js'
+import { pngName, zipName } from '../src/output/download.js'
 
 test('uses the original file name with a PNG extension', () => {
   assert.equal(pngName({ name: 'photo.jpg' }), 'photo.png')

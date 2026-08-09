@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { exportAll } from '../src/model/api.js'
+import { exportAll } from '../src/api/export.js'
 import { setOriginalImageSize } from '../src/images/metadata.js'
-import { resetSession } from '../src/model/session.js'
+import { resetSession } from '../src/api/session.js'
 
 const namedBlob = (name, value) => {
   const blob = new Blob([value], { type: 'image/png' })
@@ -205,6 +205,117 @@ test('exportAll cancels the server job when aborted', async () => {
     resetSession()
   }
 
+  assert.equal(cancelCalls, 1)
+})
+
+test('exportAll cancels the server job after a non-abort failure', async () => {
+  resetSession()
+  let cancelCalls = 0
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === '/api/sessions') {
+      return Response.json({ id: 'session-failure' })
+    }
+    if (url === '/api/export/jobs' && options.method === 'POST') {
+      return Response.json({ id: 'export-failure' })
+    }
+    if (
+      url === '/api/export/jobs/export-failure' &&
+      options.method === 'POST'
+    ) {
+      return Response.json({ detail: 'batch failed' }, { status: 500 })
+    }
+    if (
+      url === '/api/export/jobs/export-failure' &&
+      options.method === 'DELETE'
+    ) {
+      cancelCalls += 1
+      return new Response(null, { status: 204 })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  try {
+    await assert.rejects(
+      exportAll(
+        [namedBlob('failure.png', 'image')],
+        null,
+        () => {},
+      ),
+      /batch failed/,
+    )
+  } finally {
+    globalThis.fetch = originalFetch
+    resetSession()
+  }
+
+  assert.equal(cancelCalls, 1)
+})
+
+test('exportAll stops a hung progress poll before reporting upload failure', async () => {
+  resetSession()
+  let cancelCalls = 0
+  let pollSignal = null
+  let releaseUpload = null
+  let pollStartedResolve
+  const pollStarted = new Promise((resolve) => {
+    pollStartedResolve = resolve
+  })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === '/api/sessions') {
+      return Response.json({ id: 'session-hung-poll' })
+    }
+    if (url === '/api/export/jobs' && options.method === 'POST') {
+      return Response.json({ id: 'export-hung-poll' })
+    }
+    if (
+      url === '/api/export/jobs/export-hung-poll' &&
+      options.method === 'POST'
+    ) {
+      return new Promise((resolve) => {
+        releaseUpload = () =>
+          resolve(Response.json({ detail: 'batch failed' }, { status: 500 }))
+      })
+    }
+    if (url === '/api/export/jobs/export-hung-poll' && !options.method) {
+      pollSignal = options.signal
+      pollStartedResolve()
+      return new Promise(() => {})
+    }
+    if (
+      url === '/api/export/jobs/export-hung-poll' &&
+      options.method === 'DELETE'
+    ) {
+      cancelCalls += 1
+      return new Response(null, { status: 204 })
+    }
+    throw new Error(`Unexpected request: ${url}`)
+  }
+
+  let exporting
+  try {
+    exporting = exportAll(
+      [namedBlob('hung-poll.png', 'image')],
+      null,
+      () => {},
+    )
+    await waitFor(pollStarted)
+    releaseUpload()
+    await assert.rejects(waitFor(exporting, 500), /batch failed/)
+  } finally {
+    releaseUpload?.()
+    if (exporting) {
+      await Promise.race([
+        exporting.catch(() => {}),
+        new Promise((resolve) => setTimeout(resolve, 500)),
+      ])
+    }
+    globalThis.fetch = originalFetch
+    resetSession()
+  }
+
+  assert.equal(pollSignal?.aborted, true)
   assert.equal(cancelCalls, 1)
 })
 

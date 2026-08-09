@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from app import actions
+from app.segment import training
 
 
 class ApplyTests(unittest.TestCase):
@@ -11,22 +11,22 @@ class ApplyTests(unittest.TestCase):
         image = np.zeros((1, 29, 3), dtype=np.uint8)
         mask = np.array([[0] * 20 + [1] * 7 + [2] * 2], dtype=np.int8)
         stack = np.arange(29, dtype=np.float32).reshape(1, 29, 1)
-        cfg = actions.cfg.model_copy(
+        cfg = training.cfg.model_copy(
             update={"balance_floor": 1, "max_per_class": 10}
         )
 
         with (
-            patch.object(actions, "read_item", return_value=(image, mask)),
-            patch.object(actions.feature, "cached", return_value=stack),
+            patch.object(training, "read_item", return_value=(image, mask)),
+            patch.object(training.feature, "cached", return_value=stack),
             patch.object(
-                actions.feature,
+                training.feature,
                 "edge_score",
                 return_value=np.zeros(image.shape[:2], dtype=np.float32),
             ),
-            patch.object(actions.feature, "COUNT", 1),
-            patch.object(actions, "cfg", cfg),
+            patch.object(training.feature, "COUNT", 1),
+            patch.object(training, "cfg", cfg),
         ):
-            x, y = actions.make_data([object()])
+            x, y = training.make_data([object()])
 
         self.assertEqual(x.shape, (14, 1))
         self.assertEqual(np.bincount(y).tolist(), [7, 5, 2])
@@ -48,16 +48,16 @@ class ApplyTests(unittest.TestCase):
         ).reshape(4, 4, 3)
 
         with (
-            patch.object(actions, "read_item", return_value=(image, mask)),
-            patch.object(actions.feature, "cached", return_value=stack),
+            patch.object(training, "read_item", return_value=(image, mask)),
+            patch.object(training.feature, "cached", return_value=stack),
             patch.object(
-                actions.feature,
+                training.feature,
                 "edge_score",
                 return_value=np.zeros(image.shape[:2], dtype=np.float32),
             ),
-            patch.object(actions.feature, "COUNT", 3),
+            patch.object(training.feature, "COUNT", 3),
         ):
-            x, y = actions.make_data([object()])
+            x, y = training.make_data([object()])
 
         self.assertEqual(x.shape, (12, 3))
         self.assertEqual(np.bincount(y).tolist(), [8, 4])
@@ -67,8 +67,8 @@ class ApplyTests(unittest.TestCase):
         y = np.array([0, 0, 1, 1], dtype=np.int8)
         segmenter = Mock()
 
-        with patch.object(actions, "make_data", return_value=(x, y)):
-            actions.apply([], segmenter)
+        with patch.object(training, "make_data", return_value=(x, y)):
+            training.apply([], segmenter)
 
         segmenter.fit.assert_called_once_with(x, y)
 

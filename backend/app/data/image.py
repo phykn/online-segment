@@ -4,13 +4,14 @@ from io import BytesIO
 
 import numpy as np
 from fastapi import HTTPException, status
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 def read_bytes(raw: bytes) -> np.ndarray:
     try:
         with Image.open(BytesIO(raw)) as source:
-            return np.asarray(source.convert("RGB"))
+            oriented = ImageOps.exif_transpose(source)
+            return np.asarray(oriented.convert("RGB"))
     except (ValueError, UnidentifiedImageError) as error:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

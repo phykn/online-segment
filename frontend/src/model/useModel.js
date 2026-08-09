@@ -1,19 +1,12 @@
 import { computed, ref } from 'vue'
 
+import { exportAll, exportMask } from '../api/export.js'
+import { applyModel, predictImage } from '../api/model.js'
 import { hasImageLabels } from '../editor/masks.js'
 import { getOriginalImageSize } from '../images/metadata.js'
-import {
-  apply as applyApi,
-  exportAll,
-  exportMask,
-  predict as predictApi,
-} from './api.js'
-import {
-  makeResult,
-  pngName,
-  saveBlob,
-  zipName,
-} from './output.js'
+import { pngName, saveBlob, zipName } from '../output/download.js'
+import { makeResult } from '../output/raster.js'
+import { encodeModelImage, makeTrainingItems } from './input.js'
 import { isCurrent, ResultCache } from './results.js'
 
 export const useModel = ({
@@ -28,6 +21,9 @@ export const useModel = ({
   const downloadingAll = ref(false)
   const downloadProgress = ref(0)
   let downloadController = null
+  let pendingPrediction = null
+  let predictionRun = null
+  let predictionSequence = 0
   const trained = ref(false)
   const revision = ref(0)
   const error = ref('')
@@ -93,6 +89,8 @@ export const useModel = ({
   const updateRevision = () => {
     revision.value += 1
     results.clear()
+    predictionSequence += 1
+    pendingPrediction = null
   }
 
   const resetModel = () => {
@@ -109,52 +107,88 @@ export const useModel = ({
     return ordered.filter(hasImageLabels)
   }
 
-  const predict = async (
+  const isPredictionCurrent = (request) =>
+    request.sequence === predictionSequence &&
+    images.value.includes(request.image) &&
+    selectedImage.value === request.image &&
+    resizeWidth.value === request.width &&
+    revision.value === request.revision
+
+  const runPrediction = async (request) => {
+    try {
+      const cached = results.get(
+        request.image,
+        request.width,
+        request.revision,
+      )
+      if (cached) {
+        if (isPredictionCurrent(request)) result.value = cached
+        return
+      }
+
+      const image = await encodeModelImage(request.image, request.width)
+      if (!isPredictionCurrent(request)) return
+      const response = await predictImage(image)
+      if (!isPredictionCurrent(request)) return
+      setResult(
+        request.image,
+        request.width,
+        request.revision,
+        response,
+      )
+    } catch (err) {
+      if (isPredictionCurrent(request)) error.value = err.message
+    }
+  }
+
+  const drainPredictions = () => {
+    if (predictionRun) return predictionRun
+
+    predicting.value = true
+    predictionRun = (async () => {
+      try {
+        while (pendingPrediction) {
+          const request = pendingPrediction
+          pendingPrediction = null
+          await runPrediction(request)
+        }
+      } finally {
+        predicting.value = false
+        predictionRun = null
+      }
+    })()
+    return predictionRun
+  }
+
+  const predict = (
     image = selectedImage.value,
     width = resizeWidth.value,
   ) => {
-    if (!image) return
+    if (!image) return Promise.resolve()
 
-    const version = revision.value
-    const cached = results.get(image, width, version)
-    if (cached) {
-      setResult(image, width, version, cached.source)
-      return
+    pendingPrediction = {
+      image,
+      width,
+      revision: revision.value,
+      sequence: ++predictionSequence,
     }
-    if (predicting.value) return
-
-    predicting.value = true
     clearError()
-    try {
-      const response = await predictApi(image, width)
-      if (
-        images.value.includes(image) &&
-        resizeWidth.value === width &&
-        revision.value === version
-      ) {
-        setResult(image, width, version, response)
-      }
-    } catch (err) {
-      error.value = err.message
-    } finally {
-      predicting.value = false
-    }
+    return drainPredictions()
   }
 
   const apply = async () => {
     if (busy.value || labeledImages.value.size === 0) return
 
     const current = selectedImage.value
-    const width = resizeWidth.value
     sending.value = true
     clearError()
     try {
-      await applyApi(getTrainImages(current))
+      await applyModel(await makeTrainingItems(getTrainImages(current)))
       trained.value = true
       updateRevision()
-      if (!current || !images.value.includes(current)) return
-      if (resizeWidth.value !== width) return
-      await predict(current, width)
+      const nextImage = selectedImage.value
+      if (!nextImage || !images.value.includes(nextImage)) return
+      await predict(nextImage, resizeWidth.value)
     } catch (err) {
       error.value = err.message
     } finally {

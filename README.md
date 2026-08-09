@@ -43,6 +43,21 @@ Labels `0–3` have no predefined meaning. Unpainted pixels are excluded from tr
 
 Model or feature changes require retraining. Frontend changes require a rebuild.
 
+## Project Structure
+
+- `backend/app/api`: HTTP schemas, route handlers, and request dependencies. It delegates domain work instead of implementing segmentation or archive processing.
+- `backend/app/data`: image decoding, resizing, and mask serialization.
+- `backend/app/segment`: feature extraction, sampling, training, prediction, model persistence, and optional CUDA inference.
+- `backend/app/export`: PNG/ZIP encoding, export-job state, and the streamed batch pipeline.
+- `backend/app/session.py` and `backend/app/main.py`: per-session resource ownership and application composition.
+- `frontend/src/api`: HTTP/session clients and the batch-export protocol.
+- `frontend/src/images`: uploaded-file collection, decoding, and image metadata.
+- `frontend/src/model`: segmentation workflow state, request input preparation, and result caching.
+- `frontend/src/output`: prediction rasterization, download naming, and browser file saving.
+- `frontend/src/editor` and `frontend/src/sidebar`: canvas interaction and user-interface components.
+
+Dependencies flow from API and UI orchestration into these domain modules; data, segmentation, and output code do not depend on route or component implementations.
+
 ## Install
 
 ```bash
