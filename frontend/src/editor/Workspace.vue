@@ -202,6 +202,12 @@ const finishLabelStroke = () => {
   if (labelPainter.isReady()) emitLabelState(changed, true)
 }
 
+const cancelLabelStroke = () => {
+  strokeConstrained = false
+  labelPainter.cancelStroke()
+  renderLabels()
+}
+
 const renderLabels = () => {
   labelPainter.render(labelCanvasRef.value)
   if (props.resultImage) {
@@ -252,6 +258,7 @@ const makeInput = (canvasRef) =>
     stamp: stampLabel,
     line: paintLabelLine,
     finish: finishLabelStroke,
+    abort: cancelLabelStroke,
   })
 
 const imageInput = makeInput(labelCanvasRef)
@@ -386,11 +393,12 @@ defineExpose({
             <canvas
               ref="labelCanvasRef"
               class="workspace__labels"
+              tabindex="-1"
               :aria-label="image ? image.name + ' labels' : undefined"
               @pointerdown="imageInput.pointerDown"
               @pointermove="imageInput.pointerMove"
               @pointerup="imageInput.pointerEnd"
-              @pointercancel="imageInput.pointerEnd"
+              @pointercancel="imageInput.pointerCancel"
               @pointerleave="imageInput.pointerLeave"
               @contextmenu.prevent
               @auxclick.prevent
@@ -415,13 +423,14 @@ defineExpose({
           <div class="workspace__result-viewport">
             <div
               class="workspace__result-stack"
+              tabindex="-1"
               :class="{ 'canvas-stack--panning': resultPanning }"
               :style="{ transform: resultTransform }"
               @wheel="resultInput.wheel"
               @pointerdown="resultInput.pointerDown"
               @pointermove="resultInput.pointerMove"
               @pointerup="resultInput.pointerEnd"
-              @pointercancel="resultInput.pointerEnd"
+              @pointercancel="resultInput.pointerCancel"
               @pointerleave="resultInput.pointerLeave"
               @contextmenu.prevent
               @auxclick.prevent

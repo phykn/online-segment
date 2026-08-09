@@ -1,8 +1,8 @@
 import { nextTick } from 'vue'
 
 import { BRUSH_SIZE, ERASER_LABEL, LABELS } from '../../config.js'
-import { wheelAction } from './keys'
-import { useViewport } from './viewport'
+import { wheelAction } from './keys.js'
+import { useViewport } from './viewport.js'
 
 const LEFT_BUTTON = 0
 const MIDDLE_BUTTON = 1
@@ -18,9 +18,11 @@ export const useCanvasInput = ({
   stamp,
   line,
   finish,
+  abort = () => {},
 }) => {
   const viewport = useViewport(canvasRef, getBrushSize)
   let painting = false
+  let activePointerId = null
   let lastPoint = null
   let lastMidpoint = null
 
@@ -34,6 +36,7 @@ export const useCanvasInput = ({
   const cancel = () => {
     const wasPainting = painting
     painting = false
+    activePointerId = null
     lastPoint = null
     lastMidpoint = null
     viewport.stopPan()
@@ -68,18 +71,21 @@ export const useCanvasInput = ({
   }
 
   const pointerDown = (event) => {
-    if (!canEdit()) return
-    if (viewport.startPan(event)) return
+    if (!canEdit() || activePointerId !== null) return
 
     if (event.button === MIDDLE_BUTTON) {
-      event.preventDefault()
+      event.currentTarget.focus({ preventScroll: true })
+      viewport.startPan(event)
+      if (viewport.panning.value) activePointerId = event.pointerId
       return
     }
     if (event.button !== LEFT_BUTTON) return
 
+    event.currentTarget.focus({ preventScroll: true })
     event.preventDefault()
     updateCursor(event)
     painting = true
+    activePointerId = event.pointerId
     event.currentTarget.setPointerCapture(event.pointerId)
     start()
     lastPoint = viewport.getCanvasPoint(event)
@@ -89,6 +95,12 @@ export const useCanvasInput = ({
 
   const pointerMove = (event) => {
     if (!canEdit()) return
+    if (
+      activePointerId !== null &&
+      event.pointerId !== activePointerId
+    ) {
+      return
+    }
     if (viewport.movePan(event)) return
     if (!updateCursor(event) || !painting || !lastPoint) return
 
@@ -113,6 +125,7 @@ export const useCanvasInput = ({
   }
 
   const pointerEnd = (event) => {
+    if (event.pointerId !== activePointerId) return
     const wasPainting = painting
     if (wasPainting && lastPoint && lastMidpoint) {
       line(
@@ -125,6 +138,7 @@ export const useCanvasInput = ({
     }
     viewport.stopPan()
     painting = false
+    activePointerId = null
     lastPoint = null
     lastMidpoint = null
     if (wasPainting) finish()
@@ -134,12 +148,39 @@ export const useCanvasInput = ({
     }
   }
 
+  const pointerCancel = (event) => {
+    if (event.pointerId !== activePointerId) return
+
+    const wasPainting = painting
+    viewport.stopPan()
+    painting = false
+    activePointerId = null
+    lastPoint = null
+    lastMidpoint = null
+    if (wasPainting) abort()
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  const pointerLeave = (event) => {
+    if (
+      activePointerId !== null &&
+      event.pointerId !== activePointerId
+    ) {
+      return
+    }
+    viewport.hideCursor()
+  }
+
   return {
     ...viewport,
     cancel,
+    pointerCancel,
     pointerDown,
     pointerEnd,
-    pointerLeave: viewport.hideCursor,
+    pointerLeave,
     pointerMove,
     reset,
     wheel,

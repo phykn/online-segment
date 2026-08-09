@@ -282,6 +282,12 @@ export const usePainter = () => {
     return changed
   }
 
+  const cancelStroke = () => {
+    strokeImage = null
+    strokeAllows = null
+    pendingOperations = []
+  }
+
   const restore = (mask, changes) => {
     for (const [index, label] of changes) {
       setLabel(mask, index, label)
@@ -386,6 +392,7 @@ export const usePainter = () => {
 
   return {
     beginStroke,
+    cancelStroke,
     clear,
     commitStroke,
     hasLabels,

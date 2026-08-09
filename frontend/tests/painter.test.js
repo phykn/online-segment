@@ -123,3 +123,24 @@ test('undoes one complete drag as a single brush stroke', () => {
   assert.equal(painter.undo(), true)
   assert.equal(getLabelMask(image).labeledCount, 0)
 })
+
+test('discards pending paint operations when a stroke is canceled', () => {
+  const context = {
+    beginPath: () => {},
+    arc: () => {},
+    fill: () => {},
+    save: () => {},
+    restore: () => {},
+  }
+  const canvas = { getContext: () => context }
+  const image = {}
+  const painter = usePainter()
+  painter.prepare(image, 5, 3)
+
+  painter.beginStroke()
+  painter.stamp(canvas, { x: 2, y: 1 }, 0.4, 1)
+  painter.cancelStroke()
+
+  assert.equal(painter.commitStroke(), false)
+  assert.equal(getLabelMask(image).labeledCount, 0)
+})
