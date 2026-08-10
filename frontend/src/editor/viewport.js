@@ -8,12 +8,12 @@ const CURSOR_BORDER = 4
 const clamp = (value, minimum, maximum) =>
   Math.min(maximum, Math.max(minimum, value))
 
-export const useViewport = (canvasRef, getBrushSize) => {
+export const useViewport = (canvasRef, getBrushSize, sharedPan = null) => {
   const cursorVisible = ref(false)
   const cursorStyle = ref({})
   const zoom = ref(ZOOM.default)
-  const panX = ref(0)
-  const panY = ref(0)
+  const panX = sharedPan?.x ?? ref(0)
+  const panY = sharedPan?.y ?? ref(0)
   const panning = ref(false)
   let lastPanPoint = null
 
@@ -103,7 +103,7 @@ export const useViewport = (canvasRef, getBrushSize) => {
     if (zoom.value === ZOOM.min) {
       panX.value = 0
       panY.value = 0
-    } else if (bounds) {
+    } else if (bounds?.width && bounds.height) {
       clampPan(width, height)
     }
     hideCursor()

@@ -76,6 +76,10 @@ const resultOpacity = ref(OPACITY.default)
 const resultLabelsVisible = ref(false)
 const uncertaintyVisible = ref(false)
 const unclearConstraint = shallowRef(null)
+const sharedPan = {
+  x: ref(0),
+  y: ref(0),
+}
 
 const labelPainter = usePainter()
 let renderId = 0
@@ -248,6 +252,7 @@ const beginLabelStroke = () => {
 const makeInput = (canvasRef) =>
   useCanvasInput({
     canvasRef,
+    sharedPan,
     getBrushSize: () => props.brushSize,
     setBrushSize: (size) => emit('update:brush-size', size),
     updateZoom: (zoom) => emit('update:zoom', zoom),
