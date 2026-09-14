@@ -3,8 +3,8 @@ import unittest
 import numpy as np
 from fastapi import HTTPException
 
-from app.api.schema import Mask
-from app.data.mask import (
+from src.api.schema import Mask
+from src.data.mask import (
     MAX_DECODED_PIXELS,
     _decoded_size,
     decode,

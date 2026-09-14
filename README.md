@@ -1,91 +1,64 @@
 # Online Segment
 
-Online Segment is a self-hosted tool for turning sparse brush labels into complete segmentation masks with a trainable multiscale random forest.
+Online Segment is a local web app for pixel-level image segmentation.
 
-![Online Segment interface showing brush annotations and a predicted segmentation mask](asset/example.png)
+It uses a pretrained model to find candidate regions, then trains a Random Forest from the labels you provide. The Random Forest predicts every pixel, including areas the region finder missed.
 
-## Features
+## What it does
 
-- Train directly from project-specific labels `0–3`.
-- Process images at their original resolution or a selected working width.
-- Inspect uncertain regions and manual edits before export.
-- Export one mask or a full batch as lossless PNG files in a ZIP archive.
-- Accelerate large batch exports with parallel CPU features and optional CUDA prediction, with automatic CPU fallback.
-- Follow batch progress with percentage, remaining time, and a stop button.
+- Runs locally in your browser; images stay on your computer.
+- Finds candidate regions with a lightweight CPDINO ViT-B model.
+- Lets you label regions or paint pixels with Q, W, E, and R.
+- Learns from your labels and predicts the full image with a pixel Random Forest.
+- Supports undo, redo, uncertain-pixel highlighting, PNG export, and ZIP export.
 
-## Workflow
+Q, W, E, and R have no built-in meaning. Assign them to any classes that fit your images, including background.
 
-1. Upload images and optionally enter a working width.
-2. Paint at least two labels with consistent meanings across the batch.
-3. Press **Space** to train and predict.
-4. Review the result, correct labels, and download one mask or the full batch.
+## Quick start
 
-Labels `0–3` have no predefined meaning. Unpainted pixels are excluded from training and stored as `255` in drawn-mask exports.
+Requirements: Python 3.10 or newer, Node.js, Git, and Git LFS. A CUDA-capable GPU is optional but recommended for faster region finding.
 
-## Shortcuts
-
-| Key | Action |
-| --- | --- |
-| `Q` / `W` / `E` / `R` | Select labels `0–3` |
-| `T` | Eraser |
-| `Space` | Train and apply |
-| `1` / `2` | Toggle unclear areas / edits |
-| `B` + wheel | Brush size |
-| `Z` + wheel | Zoom |
-| `+` / `-` | Mask opacity |
-| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo brush stroke |
-| Middle drag | Pan |
-
-## Configuration
-
-- `backend/config.yaml`: model, feature, CUDA, export, and server settings.
-- `frontend/config.js`: editor, label, download batching, and progress settings.
-
-Model or feature changes require retraining. Frontend changes require a rebuild.
-
-## Project Structure
-
-- `backend/app/api`: HTTP schemas, route handlers, and request dependencies. It delegates domain work instead of implementing segmentation or archive processing.
-- `backend/app/data`: image decoding, resizing, and mask serialization.
-- `backend/app/segment`: feature extraction, sampling, training, prediction, model persistence, and optional CUDA inference.
-- `backend/app/export`: PNG/ZIP encoding, export-job state, and the streamed batch pipeline.
-- `backend/app/session.py` and `backend/app/main.py`: per-session resource ownership and application composition.
-- `frontend/src/api`: HTTP/session clients and the batch-export protocol.
-- `frontend/src/images`: uploaded-file collection, decoding, and image metadata.
-- `frontend/src/model`: segmentation workflow state, request input preparation, and result caching.
-- `frontend/src/output`: prediction rasterization, download naming, and browser file saving.
-- `frontend/src/editor` and `frontend/src/sidebar`: canvas interaction and user-interface components.
-
-Dependencies flow from API and UI orchestration into these domain modules; data, segmentation, and output code do not depend on route or component implementations.
-
-## Install
-
-```bash
+```powershell
+git lfs install
+git lfs pull
 cd backend
-pip install -r requirements.txt
-```
-
-```bash
-cd frontend
+python -m pip install -r requirements.txt
+cd ../frontend
 npm install
+cd ..
 ```
 
-Install a CUDA-enabled PyTorch build separately to enable GPU batch prediction.
+Run the backend and frontend in separate terminals:
 
-## Run
-
-```bash
-cd frontend
-npm run build
-```
-
-```bash
+```powershell
 cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+python -m uvicorn src.main:app --reload --reload-include "*.yaml" --host 127.0.0.1 --port 8000
 ```
 
-Run the server with one worker because sessions are process-local. Inactive temporary sessions expire after one hour.
+```powershell
+cd frontend
+npm run dev
+```
 
-## Credits
+Open <http://localhost:5173>.
 
-The trainable workflow is based on the [SAMBA paper](https://doi.org/10.21105/joss.06159) and [SAMBA Web](https://github.com/tldr-group/samba-web).
+## Basic workflow
+
+1. Select **Add images**.
+2. Optionally open **Settings** to adjust Width, Diameter, Detection, Flow tolerance, or Min. area.
+3. Select **Find regions** to create candidate outlines.
+4. Choose a class (Q, W, E, or R), click a region to label it, or drag to paint pixels. Hold Shift while painting to paint inside a region.
+5. Press **Space** (**Train & predict**) after labeling at least two classes.
+6. Use **Prediction**, **Unclear**, and **Edits** to inspect the result. Use **Download** to save a PNG or all images as a ZIP.
+
+The labels you paint are training examples. The final mask is the Random Forest prediction, so you can keep correcting labels and retraining until the result is useful.
+
+## Documentation
+
+- [Feature comparison](docs/feature-comparison.md)
+- [Cellpose context comparison](docs/cellpose-context-comparison.md)
+- [ViT-B refactor notes](docs/vitb-refactor.md)
+
+## License
+
+Online Segment is released under the [MIT License](LICENSE). It uses [Cellpose](https://github.com/MouseLand/cellpose) and [DINOv3](https://github.com/facebookresearch/dinov3); their licenses remain applicable to those components.

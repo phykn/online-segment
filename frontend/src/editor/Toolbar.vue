@@ -6,6 +6,7 @@ defineProps({
   brushSize: { type: Number, required: true },
   zoom: { type: Number, required: true },
   canReset: { type: Boolean, required: true },
+  predicting: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -21,7 +22,17 @@ const emit = defineEmits([
   <section class="editor-toolbar" aria-label="Editor controls">
     <div class="editor-toolbar__row">
       <div class="label-option" role="group" aria-label="Brush labels">
-        <span>Label</span>
+        <span class="label-option__caption">
+          Label
+          <span
+            class="editor-toolbar__status"
+            :class="{ 'editor-toolbar__status--active': predicting }"
+            :title="predicting ? 'Processing…' : undefined"
+            role="status"
+          >
+            <span class="visually-hidden">{{ predicting ? 'Processing…' : '' }}</span>
+          </span>
+        </span>
         <div class="label-option__buttons">
           <button
             v-for="label in LABELS"
@@ -33,6 +44,7 @@ const emit = defineEmits([
             type="button"
             :style="{ backgroundColor: label.color }"
             :aria-label="'Label ' + label.key"
+            :title="label.name + ' (' + label.key + ')'"
             :aria-pressed="label.value === selectedLabel"
             @click="emit('update:selected-label', label.value)"
           >

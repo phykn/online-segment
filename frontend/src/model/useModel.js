@@ -1,30 +1,23 @@
 import { computed, ref } from 'vue'
 
-import { exportAll, exportMask } from '../api/export.js'
-import { applyModel, predictImage } from '../api/model.js'
-import { hasImageLabels } from '../editor/masks.js'
-import { getOriginalImageSize } from '../images/metadata.js'
-import { pngName, saveBlob, zipName } from '../output/download.js'
+import { predictImage } from '../api/model.js'
 import { makeResult } from '../output/raster.js'
-import { encodeModelImage, makeTrainingItems } from './input.js'
+import { encodeModelImage, makeEdits, makeTraining } from './input.js'
 import { isCurrent, ResultCache } from './results.js'
+import { useDownloads } from './useDownloads.js'
 
 export const useModel = ({
   images,
-  labeledImages,
   selectedImage,
   resizeWidth,
+  cellpose = ref(null),
 }) => {
-  const sending = ref(false)
   const predicting = ref(false)
-  const downloading = ref(false)
-  const downloadingAll = ref(false)
-  const downloadProgress = ref(0)
-  let downloadController = null
   let pendingPrediction = null
   let predictionRun = null
   let predictionSequence = 0
-  const trained = ref(false)
+  const enabled = ref(false)
+  const progress = ref(null)
   const revision = ref(0)
   const error = ref('')
   const result = ref(null)
@@ -38,12 +31,7 @@ export const useModel = ({
       ? result.value.uncertaintyUrl
       : '',
   )
-  const uncertaintyMask = computed(() =>
-    result.value?.image === selectedImage.value
-      ? result.value.source.uncertain
-      : null,
-  )
-  const canDownload = computed(
+  const canDownloadResult = computed(
     () =>
       isCurrent(
         result.value,
@@ -52,12 +40,17 @@ export const useModel = ({
         revision.value,
       ),
   )
-  const canDownloadResult = computed(() => canDownload.value)
-  const canDownloadAll = computed(() =>
-    trained.value && images.value.length > 0,
-  )
+  const downloads = useDownloads({
+    images, selectedImage, resizeWidth, result,
+    canDownloadResult, predicting, error,
+    prepare: async () => {
+      updateRevision()
+      await predict()
+      if (error.value) throw new Error(error.value)
+    },
+  })
+  const { downloading, downloadingAll } = downloads
   const busy = computed(() =>
-    sending.value ||
     predicting.value ||
     downloading.value ||
     downloadingAll.value,
@@ -94,17 +87,20 @@ export const useModel = ({
   }
 
   const resetModel = () => {
-    trained.value = false
+    enabled.value = false
     updateRevision()
     result.value = null
   }
 
-  const getTrainImages = (first = null) => {
-    const ordered =
-      first && labeledImages.value.has(first)
-        ? [first, ...images.value.filter((image) => image !== first)]
-        : images.value
-    return ordered.filter(hasImageLabels)
+  const invalidateFeatures = () => {
+    updateRevision()
+    clearResult()
+  }
+
+  const resetSessionResults = () => {
+    // A retried request already carries the full label snapshot to the new session.
+    results.clear()
+    result.value = null
   }
 
   const isPredictionCurrent = (request) =>
@@ -112,6 +108,7 @@ export const useModel = ({
     images.value.includes(request.image) &&
     selectedImage.value === request.image &&
     resizeWidth.value === request.width &&
+    cellpose.value === request.cellpose &&
     revision.value === request.revision
 
   const runPrediction = async (request) => {
@@ -126,10 +123,20 @@ export const useModel = ({
         return
       }
 
-      const image = await encodeModelImage(request.image, request.width)
+      const image = await encodeModelImage(request.image)
+      const training = await makeTraining(images.value)
       if (!isPredictionCurrent(request)) return
-      const response = await predictImage(image)
+      progress.value = { stage: 'waiting', done: 0, total: 0 }
+      const response = await predictImage(image, {
+        width: request.width,
+        cellpose: request.cellpose,
+        edits: makeEdits(request.image),
+        training,
+      }, (state) => {
+        if (isPredictionCurrent(request)) progress.value = state
+      })
       if (!isPredictionCurrent(request)) return
+      enabled.value = true
       setResult(
         request.image,
         request.width,
@@ -155,6 +162,7 @@ export const useModel = ({
       } finally {
         predicting.value = false
         predictionRun = null
+        progress.value = null
       }
     })()
     return predictionRun
@@ -171,113 +179,41 @@ export const useModel = ({
       width,
       revision: revision.value,
       sequence: ++predictionSequence,
+      cellpose: cellpose.value,
     }
     clearError()
     return drainPredictions()
   }
 
   const apply = async () => {
-    if (busy.value || labeledImages.value.size === 0) return
-
-    const current = selectedImage.value
-    sending.value = true
-    clearError()
-    try {
-      await applyModel(await makeTrainingItems(getTrainImages(current)))
-      trained.value = true
-      updateRevision()
-      const nextImage = selectedImage.value
-      if (!nextImage || !images.value.includes(nextImage)) return
-      await predict(nextImage, resizeWidth.value)
-    } catch (err) {
-      error.value = err.message
-    } finally {
-      sending.value = false
-    }
+    if (busy.value || !selectedImage.value) return
+    updateRevision()
+    await predict()
   }
 
-  const downloadResult = async () => {
-    const image = selectedImage.value
-    const current = result.value?.image === image ? result.value : null
-    const size = image ? getOriginalImageSize(image) : null
-    if (
-      !image ||
-      !current ||
-      !canDownloadResult.value ||
-      !size ||
-      downloading.value ||
-      downloadingAll.value
-    ) {
-      return
-    }
-
-    downloading.value = true
-    clearError()
-    try {
-      const blob = await exportMask(current.mask, size.width, size.height)
-      saveBlob(blob, pngName(image))
-    } catch (err) {
-      error.value = err.message
-    } finally {
-      downloading.value = false
-    }
-  }
-
-  const downloadAll = async (archiveName = '') => {
-    if (downloadingAll.value) {
-      downloadController?.abort()
-      return
-    }
-    if (!canDownloadAll.value || downloading.value || busy.value) return
-
-    const controller = new AbortController()
-    downloadController = controller
-    downloadingAll.value = true
-    downloadProgress.value = 0
-    clearError()
-    try {
-      const blob = await exportAll(
-        images.value,
-        resizeWidth.value,
-        (progress) => {
-          downloadProgress.value = progress
-        },
-        controller.signal,
-      )
-      saveBlob(blob, zipName(archiveName))
-    } catch (err) {
-      if (err?.name !== 'AbortError') {
-        error.value = err.message
-      }
-    } finally {
-      downloadingAll.value = false
-      if (downloadController === controller) {
-        downloadController = null
-      }
-      downloadProgress.value = 0
-    }
+  const updateEdits = () => {
+    updateRevision()
+    if ((enabled.value || predicting.value) && selectedImage.value) return predict()
+    return Promise.resolve()
   }
 
   return {
-    sending,
+    ...downloads,
     predicting,
-    downloading,
-    downloadingAll,
-    downloadProgress,
-    trained,
+    enabled,
+    progress,
+    updateEdits,
     error,
     resultImage,
     uncertaintyImage,
-    uncertaintyMask,
     canDownloadResult,
-    canDownloadAll,
     busy,
     clearError,
     clearResult,
     resetModel,
+    invalidateFeatures,
+    resetSessionResults,
     apply,
     predict,
-    downloadAll,
-    downloadResult,
   }
 }

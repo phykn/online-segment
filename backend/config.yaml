@@ -1,63 +1,27 @@
 server:
   title: Online Segment API
-  origins:
-    - http://localhost:5173
-    - http://127.0.0.1:5173
-
+  origins: [http://localhost:5173, http://127.0.0.1:5173]
 session:
   max_age: 3600
-  temp_prefix: online-segment-session
-
-model:
-  file: model.joblib
-  n_estimators: 200
-  max_depth: 10
-  max_features: 3
-  min_samples_leaf: 2
-  class_weight: balanced_subsample
-  max_per_class: 10000
-  balance_floor: 256
-  edge_ratio: 0.5
-  edge_quantile: 0.75
-  uncertain_threshold: 0.7
-  random_state: 0
-  n_jobs: -1
-
+cellpose:
+  checkpoint: weights/cpdino-vitb.pth
+  device: auto
+  threads: 6
+  tile_size: 384
+  overlap: 0.1
+  batch_size: 2
+  max_pixels: 16777216
+  flow_threshold: 0.4
+  cellprob_threshold: 0
+  cache_mb: 128
+  min_area: 8
 feature:
-  base_size: 512
-  factors: [1.0, 2.0, 4.0]
-  hessian_factors: [1.0, 2.0, 4.0]
-  context_factors: [8.0, 16.0, 32.0]
-  sigma_min: 0.5
-  sigma_max: 32.0
-  percentiles: [1.0, 99.0]
+  kind: hybrid
+  components: 64
+  cellpose: statistics
   cache_mb: 256
-
 export:
   max_age: 3600
   temp_prefix: online-segment
-  colors:
-    - [239, 71, 111]
-    - [17, 138, 178]
-    - [6, 167, 125]
-    - [142, 93, 231]
-
-performance:
-  feature:
-    max_workers: 12
-    parallel_min_pixels: 65536
-  cuda_forest:
-    enabled: true
-    chunk_size: 131072
-    full_chunk_size: 65536
-    early_exit:
-      - trees: 64
-        margin: 0.20
-      - trees: 128
-        margin: 0.10
-      - trees: 192
-        margin: 0.03
-    min_exit_rate: 0.10
-  export:
-    gpu_min_pixels: 16000000
-    png_compress_level: 1
+  colors: [[239, 71, 111], [17, 138, 178], [6, 167, 125], [142, 93, 231]]
+  png_compress_level: 1

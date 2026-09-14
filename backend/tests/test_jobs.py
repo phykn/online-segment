@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import HTTPException
 
-from app.export.jobs import JobStore
+from src.export.jobs import JobStore
 
 
 class JobStoreTests(unittest.TestCase):

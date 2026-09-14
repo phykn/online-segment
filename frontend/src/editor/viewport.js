@@ -93,12 +93,19 @@ export const useViewport = (canvasRef, getBrushSize, sharedPan = null) => {
     panY.value = clamp(panY.value, -maxY, maxY)
   }
 
-  const setZoom = (value) => {
+  const setZoom = (value, anchor = null) => {
+    const next = Math.round(clamp(value, ZOOM.min, ZOOM.max) * 10) / 10
+    if (next === zoom.value) return
     const canvas = canvasRef.value
     const bounds = canvas?.getBoundingClientRect()
     const width = bounds ? bounds.width / zoom.value : 0
     const height = bounds ? bounds.height / zoom.value : 0
-    zoom.value = Math.round(clamp(value, ZOOM.min, ZOOM.max) * 10) / 10
+    if (anchor && bounds?.width && bounds.height) {
+      const ratio = next / zoom.value - 1
+      panX.value += (bounds.left + bounds.width / 2 - anchor.clientX) * ratio
+      panY.value += (bounds.top + bounds.height / 2 - anchor.clientY) * ratio
+    }
+    zoom.value = next
 
     if (zoom.value === ZOOM.min) {
       panX.value = 0
@@ -111,7 +118,7 @@ export const useViewport = (canvasRef, getBrushSize, sharedPan = null) => {
 
   const handleZoomWheel = (event) => {
     const direction = event.deltaY < 0 ? ZOOM.step : -ZOOM.step
-    setZoom(zoom.value + direction)
+    setZoom(zoom.value + direction, event)
   }
 
   const startPan = (event) => {

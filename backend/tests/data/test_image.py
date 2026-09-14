@@ -4,7 +4,7 @@ from io import BytesIO
 import numpy as np
 from PIL import Image
 
-from app.data.image import read_bytes, resize_width
+from src.data.image import read_bytes, resize_width
 
 
 class ImageTests(unittest.TestCase):

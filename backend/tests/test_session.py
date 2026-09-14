@@ -1,46 +1,27 @@
 import unittest
-
+from unittest.mock import patch
 import numpy as np
 from fastapi import HTTPException
-
-from app.segment import feature
-from app.session import SessionStore
+from src.session import SessionStore
+from src.config import config
 
 
 class SessionTests(unittest.TestCase):
-    def test_models_are_isolated_between_sessions(self) -> None:
-        store = SessionStore(max_age=3600, prefix="online-segment-test")
-        first = store.create()
-        second = store.create()
-        x = np.zeros((4, feature.COUNT), dtype=np.float32)
-        x[2:] = 1.0
-        y = np.array([0, 0, 1, 1], dtype=np.int8)
+    def test_feature_caches_are_isolated_and_released(self):
+        store = SessionStore(max_age=3600); first, second = store.create(), store.create()
+        image = np.zeros((2, 2, 3), np.uint8)
+        with patch.object(config.feature, 'kind', 'image'), patch.object(config.feature, 'cellpose', 'none'):
+            first.segmenter.feature(image)
+            self.assertEqual(second.segmenter.features.size, 0)
+            second.segmenter.feature(image)
+        store.close()
+        self.assertEqual(first.segmenter.features.size, 0)
+        self.assertEqual(second.segmenter.features.size, 0)
 
-        try:
-            first_segmenter = first.segmenter
-            second_segmenter = second.segmenter
-            first_model = first_segmenter.fit(x, y)
-            with self.assertRaises(HTTPException):
-                second_segmenter.load()
-
-            second_model = second_segmenter.fit(x, y)
-            self.assertIs(first_segmenter.load(), first_model)
-            self.assertIs(second_segmenter.load(), second_model)
-            self.assertIsNot(first_segmenter.load(), second_segmenter.load())
-        finally:
-            store.close()
-
-    def test_unknown_session_is_rejected(self) -> None:
-        store = SessionStore(max_age=3600, prefix="online-segment-test")
+    def test_unknown_session_is_rejected(self):
+        store = SessionStore(max_age=3600)
         try:
             with self.assertRaises(HTTPException) as caught:
-                with store.acquire("missing"):
-                    pass
-        finally:
-            store.close()
-
-        self.assertEqual(caught.exception.status_code, 404)
-
-
-if __name__ == "__main__":
-    unittest.main()
+                with store.acquire('missing'): pass
+            self.assertEqual(caught.exception.status_code, 404)
+        finally: store.close()

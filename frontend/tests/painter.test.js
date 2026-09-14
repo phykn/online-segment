@@ -14,6 +14,24 @@ const makeMask = (width, height) => {
   return { width, height, data, labeledCount: 0 }
 }
 
+test('clearing labels can be undone and redone without losing earlier brush history', () => {
+  const painter = usePainter(), image = {}
+  painter.prepare(image, 5, 3)
+  const canvas = { getContext: () => ({beginPath(){},arc(){},fill(){},save(){},restore(){}}) }
+  painter.beginStroke()
+  painter.stamp(canvas, {x:2,y:1}, .4, 2)
+  painter.commitStroke()
+  painter.resetForImage(image, null)
+  assert.equal(getLabelMask(image).labeledCount, 0)
+  assert.equal(painter.undo(), true)
+  assert.equal(getLabelMask(image).data[7], 2)
+  assert.equal(painter.redo(), true)
+  assert.equal(getLabelMask(image).labeledCount, 0)
+  painter.undo()
+  painter.undo()
+  assert.equal(getLabelMask(image).labeledCount, 0)
+})
+
 test('paints one continuous capsule between pointer positions', () => {
   const mask = makeMask(11, 7)
 
@@ -143,4 +161,37 @@ test('discards pending paint operations when a stroke is canceled', () => {
 
   assert.equal(painter.commitStroke(), false)
   assert.equal(getLabelMask(image).labeledCount, 0)
+})
+
+test('instance fills share brush history, preserve other IDs, and can be erased', () => {
+  const painter = usePainter(), image = {}
+  painter.prepare(image, 4, 2)
+  const instances = { width: 4, height: 2, data: new Int32Array([0, 1000, 1000, 2, 0, 1000, 1000, 2]) }
+  painter.beginStroke()
+  painter.fillInstance(instances, { x: 1, y: 0 }, 1)
+  assert.equal(painter.commitStroke(), true)
+  assert.deepEqual([...getLabelMask(image).data], [-1, 1, 1, -1, -1, 1, 1, -1])
+  const canvas = { getContext: () => ({beginPath(){},arc(){},fill(){},save(){},restore(){}}) }
+  painter.beginStroke(); painter.stamp(canvas, {x:1,y:0}, .4, 2); painter.commitStroke()
+  assert.equal(getLabelMask(image).data[1], 2)
+  painter.undo(); assert.equal(getLabelMask(image).data[1], 1)
+  painter.undo(); assert.equal(getLabelMask(image).labeledCount, 0)
+  painter.redo(); assert.equal(getLabelMask(image).labeledCount, 4)
+  painter.beginStroke(); painter.fillInstance(instances, {x:2,y:1}, -1); painter.commitStroke()
+  assert.equal(getLabelMask(image).labeledCount, 0)
+  painter.undo(); assert.equal(getLabelMask(image).labeledCount, 4)
+  painter.beginStroke(); painter.fillInstance(instances, {x:0,y:0}, 0)
+  assert.equal(painter.commitStroke(), false)
+})
+
+test('cancelled instance fills and mismatched geometry do not change labels', () => {
+  const painter = usePainter(), image = {}
+  painter.prepare(image, 2, 2)
+  painter.beginStroke()
+  painter.fillInstance({width:2,height:2,data:new Int32Array([9,9,9,9])}, {x:0,y:0}, 2)
+  painter.cancelStroke()
+  assert.equal(getLabelMask(image).labeledCount, 0)
+  painter.beginStroke()
+  painter.fillInstance({width:1,height:1,data:new Int32Array([9])}, {x:0,y:0}, 2)
+  assert.equal(painter.commitStroke(), false)
 })

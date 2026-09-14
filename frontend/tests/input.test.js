@@ -4,6 +4,24 @@ import { ref } from 'vue'
 
 import { useCanvasInput } from '../src/editor/input.js'
 
+test('refreshes a stationary cursor when the label or brush size changes', () => {
+  let label = 0, size = 24
+  const canvas = { width: 100, height: 100, getBoundingClientRect: () =>
+    ({left:0,top:0,right:100,bottom:100,width:100,height:100}) }
+  const input = useCanvasInput({canvasRef:ref(canvas), getBrushSize:()=>size,
+    getLabel:()=>label, canEdit:()=>true, setBrushSize:()=>{}, updateZoom:()=>{},
+    start:()=>{},stamp:()=>{},line:()=>{},finish:()=>{}})
+  input.pointerMove({clientX:50,clientY:50,pointerId:1})
+  const first = input.cursorStyle.value.borderColor
+  label = 2; size = 40
+  input.refreshCursor()
+  assert.notEqual(input.cursorStyle.value.borderColor, first)
+  assert.equal(input.cursorStyle.value.width, '40px')
+  input.pointerLeave({pointerId:1})
+  input.refreshCursor()
+  assert.equal(input.cursorVisible.value, false)
+})
+
 test('focuses the editing surface when a left-button stroke starts', () => {
   const canvas = {
     width: 100,

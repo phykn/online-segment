@@ -1,100 +1,24 @@
 import unittest
-from types import SimpleNamespace
-from unittest.mock import Mock
-
+from unittest.mock import patch
 import numpy as np
-
-from app.segment import prediction
+from src.config import config
+from src.segment.model import Segmenter
+from src.segment.prediction import infer
 
 
 class PredictTests(unittest.TestCase):
-    def test_predict_uses_random_forest_probabilities(self) -> None:
-        image = np.zeros((2, 3, 3), dtype=np.uint8)
-        probs = np.zeros((2, 3, 2), dtype=np.float32)
-        probs[..., 0] = 1.0
-        classifier = SimpleNamespace(
-            classes_=np.array([0, 1], dtype=np.int8),
-        )
-        segmenter = Mock()
-        segmenter.prob.return_value = probs
+    def test_no_labels_means_unlabeled_including_background(self):
+        image = np.zeros((8, 9, 3), np.uint8)
+        result = infer(image, Segmenter())
+        self.assertTrue((result[0] == -1).all())
+        self.assertEqual(result[2]['unlabeled_pixels'], 72)
+        self.assertEqual(result[3], [])
 
-        result = prediction.predict(image, segmenter, classifier)
-
-        segmenter.prob.assert_called_once_with(image, classifier)
-        self.assertTrue((result == 0).all())
-
-    def test_predict_features_uses_precomputed_stack(self) -> None:
-        stack = np.zeros((2, 3, 4), dtype=np.float32)
-        probs = np.zeros((2, 3, 2), dtype=np.float32)
-        probs[..., 1] = 1.0
-        classifier = SimpleNamespace(
-            classes_=np.array([0, 1], dtype=np.int8),
-        )
-        segmenter = Mock()
-        segmenter.prob_features.return_value = probs
-
-        result = prediction.predict_features(stack, segmenter, classifier)
-
-        segmenter.prob_features.assert_called_once_with(stack, classifier)
-        self.assertTrue((result == 1).all())
-
-    def test_predict_features_uses_gpu_labels_when_available(self) -> None:
-        stack = np.zeros((2, 3, 4), dtype=np.float32)
-        expected = np.ones((2, 3), dtype=np.int8)
-        predictor = Mock()
-        predictor.predict.return_value = expected
-        segmenter = Mock()
-
-        result = prediction.predict_features(
-            stack,
-            segmenter,
-            Mock(),
-            predictor,
-        )
-
-        self.assertIs(result, expected)
-        predictor.predict.assert_called_once_with(stack)
-        segmenter.prob_features.assert_not_called()
-
-    def test_predict_features_falls_back_when_gpu_declines(self) -> None:
-        stack = np.zeros((2, 3, 4), dtype=np.float32)
-        probs = np.zeros((2, 3, 2), dtype=np.float32)
-        probs[..., 1] = 1.0
-        classifier = SimpleNamespace(
-            classes_=np.array([0, 1], dtype=np.int8),
-        )
-        predictor = Mock()
-        predictor.predict.return_value = None
-        segmenter = Mock()
-        segmenter.prob_features.return_value = probs
-
-        result = prediction.predict_features(
-            stack,
-            segmenter,
-            classifier,
-            predictor,
-        )
-
-        predictor.predict.assert_called_once_with(stack)
-        segmenter.prob_features.assert_called_once_with(
-            stack,
-            classifier,
-        )
-        self.assertTrue((result == 1).all())
-
-    def test_infer_marks_low_confidence_pixels(self) -> None:
-        image = np.zeros((1, 2, 3), dtype=np.uint8)
-        probs = np.array([[[0.8, 0.2], [0.6, 0.4]]], dtype=np.float32)
-        classifier = SimpleNamespace(
-            classes_=np.array([0, 1], dtype=np.int8),
-        )
-        segmenter = Mock()
-        segmenter.prob.return_value = probs
-
-        mask, uncertain = prediction.infer(image, segmenter, classifier)
-
-        self.assertEqual(mask.tolist(), [[0, 0]])
-        self.assertEqual(uncertain.tolist(), [[0, 1]])
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_single_class_annotations_are_training_data_not_final_predictions(self):
+        edits = np.full((4, 6), -1, np.int8); edits[0] = 0
+        with patch.object(config.feature, 'kind', 'image'):
+            result = infer(np.zeros((4, 6, 3), np.uint8), Segmenter(), edits=edits)
+        self.assertEqual(result[2]['pixel_counts'], [0, 0, 0, 0])
+        self.assertEqual(result[2]['area_fractions'], [0, 0, 0, 0])
+        self.assertEqual(result[2]['unlabeled_pixels'], 24)
+        self.assertEqual(result[2]['training_samples_by_class'], [6, 0, 0, 0])

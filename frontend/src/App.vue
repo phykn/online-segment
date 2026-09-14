@@ -1,5 +1,5 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { BRUSH_SIZE, ERASER_LABEL, ZOOM } from '../config.js'
 import {
@@ -15,9 +15,12 @@ import Workspace from './editor/Workspace.vue'
 import { useImages } from './images/collection'
 import { getSession, onSessionChange } from './api/session'
 import { useModel } from './model/useModel'
+import { useProposals } from './model/useProposals'
 import Sidebar from './sidebar/Sidebar.vue'
+import ProcessingControls from './sidebar/ProcessingControls.vue'
 
 const resizeWidth = ref(null)
+const cellpose = ref({ diameter: null, cellprob_threshold: 0, flow_threshold: 0.4, min_area: 8 })
 const selectedLabel = ref(0)
 const brushSize = ref(BRUSH_SIZE.default)
 const zoom = ref(ZOOM.default)
@@ -39,20 +42,21 @@ const {
 
 const model = useModel({
   images,
-  labeledImages,
   selectedImage,
   resizeWidth,
+  cellpose,
 })
 
 const {
   downloading,
   downloadingAll,
   downloadProgress,
-  trained,
+  enabled,
+  predicting,
+  updateEdits,
   error: modelError,
   resultImage,
   uncertaintyImage,
-  uncertaintyMask,
   canDownloadResult,
   canDownloadAll,
   busy,
@@ -65,8 +69,26 @@ const {
   downloadResult,
 } = model
 
+const { instances, proposing, propose, reset: resetProposals } = useProposals({ selectedImage, resizeWidth, cellpose, error: modelError })
+
+const applySettings = async ({ width, cellpose: parameters }) => {
+  if (busy.value || proposing.value) return
+  const retrain = enabled.value
+  if (resizeWidth.value !== width || Object.keys(parameters).some(key => parameters[key] !== cellpose.value[key])) {
+    resizeWidth.value = width
+    cellpose.value = parameters
+    resetProposals()
+    model.invalidateFeatures()
+  }
+  clearError()
+  if (selectedImage.value) {
+    await propose()
+    if (!modelError.value && retrain) await predict()
+  }
+}
+
 const handleShortcut = (event) => {
-  if (isInteractiveTarget(event.target)) return
+  if (event.isComposing || isInteractiveTarget(event.target)) return
   if (isRedoShortcut(event)) {
     if (!event.repeat) workspaceRef.value?.redoStroke()
     event.preventDefault()
@@ -77,6 +99,7 @@ const handleShortcut = (event) => {
     event.preventDefault()
     return
   }
+  if (event.ctrlKey || event.metaKey || event.altKey) return
   if (setWheelKey(event.code, true)) {
     event.preventDefault()
     return
@@ -90,7 +113,9 @@ const handleShortcut = (event) => {
   } else if (action.name === 'eraser') {
     selectedLabel.value = ERASER_LABEL
   } else if (action.name === 'apply') {
-    if (!event.repeat) void apply()
+    if (!event.repeat && !proposing.value) void apply()
+  } else if (action.name === 'toggle-prediction') {
+    if (!event.repeat) workspaceRef.value?.togglePrediction()
   } else if (action.name === 'toggle-uncertainty') {
     if (!event.repeat) workspaceRef.value?.toggleUncertainty()
   } else if (action.name === 'toggle-edits') {
@@ -103,6 +128,12 @@ const handleShortcut = (event) => {
   event.preventDefault()
 }
 
+const restoreEditorFocus = (event) => {
+  if (event.detail && event.target.closest('button, input[type="checkbox"]')) {
+    nextTick(() => workspaceRef.value?.focus())
+  }
+}
+
 const handleKeyUp = (event) => {
   setWheelKey(event.code, false)
 }
@@ -112,9 +143,8 @@ onMounted(() => {
   window.addEventListener('keyup', handleKeyUp)
   window.addEventListener('blur', clearWheelKeys)
   stopSession = onSessionChange((id) => {
-    const changed = Boolean(sessionId.value && sessionId.value !== id)
+    if (sessionId.value && sessionId.value !== id) { resetProposals(); model.resetSessionResults() }
     sessionId.value = id
-    if (changed) resetModel()
   })
   void getSession().catch(() => {})
 })
@@ -128,7 +158,7 @@ onBeforeUnmount(() => {
 
 const resetLabels = () => {
   const image = selectedImage.value
-  if (!image || busy.value) return
+  if (!image || downloading.value || downloadingAll.value) return
 
   workspaceRef.value?.resetLabels(image)
   clearError()
@@ -138,19 +168,16 @@ const removeAt = (index) => {
   const image = images.value[index]
   if (!image) return
 
-  const wasSelected = image === selectedImage.value
   removeImage(index)
-  clearResult(image)
   clearError()
-  if (wasSelected && trained.value && selectedImage.value) {
-    void predict(selectedImage.value)
-  }
+  void updateEdits()
 }
 
 const clearAllImages = () => {
   if (busy.value || images.value.length === 0) return
 
   clearImages()
+  resetProposals()
   resetModel()
   clearError()
 }
@@ -161,62 +188,55 @@ const selectAt = (index) => {
 
   selectImage(index)
   clearError()
-  if (trained.value) {
+  if (enabled.value) {
     void predict(image)
   } else {
     clearResult()
   }
 }
 
-const setWidth = (width) => {
-  if (width === resizeWidth.value) return
-
-  resizeWidth.value = width
-  clearResult()
-  clearError()
-  if (trained.value && selectedImage.value) {
-    void predict(selectedImage.value, width)
-  }
-}
-
 const handleLabelState = (state) => {
   updateLabelState(state)
   if (state.changed) clearError()
+  if (state.changed && state.committed) updateEdits()
 }
 </script>
 
 <template>
-  <main class="app">
+  <main class="app" @click="restoreEditorFocus">
     <Sidebar
       :images="images"
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
-      :resize-width="resizeWidth"
-      :busy="busy"
+      :busy="busy || proposing"
       :downloading-all="downloadingAll"
       :download-progress="downloadProgress"
       :can-download-all="canDownloadAll"
       :model-error="modelError"
-      :session-id="sessionId"
       @add-images="addImages"
       @clear-images="clearAllImages"
       @remove-image="removeAt"
       @select-image="selectAt"
       @download-all="downloadAll"
-      @update:resize-width="setWidth"
-    />
+    >
+      <template #settings="{ collapse }">
+        <ProcessingControls :width="resizeWidth" :parameters="cellpose" :busy="busy || proposing" :has-image="!!selectedImage" @apply="applySettings" @collapse="collapse" />
+      </template>
+    </Sidebar>
     <div class="editor-main">
       <Toolbar
         :selected-label="selectedLabel"
         :brush-size="brushSize"
         :zoom="zoom"
-        :can-reset="labeledImages.has(selectedImage) && !busy"
+        :predicting="predicting"
+        :can-reset="labeledImages.has(selectedImage) && !downloading && !downloadingAll"
         @reset-labels="resetLabels"
         @update:selected-label="selectedLabel = $event"
         @update:brush-size="brushSize = $event"
         @update:zoom="zoom = $event"
       />
       <Workspace
+        :instances="instances"
         ref="workspaceRef"
         :image="selectedImage"
         :target-width="resizeWidth"
@@ -225,10 +245,9 @@ const handleLabelState = (state) => {
         :zoom="zoom"
         :result-image="resultImage"
         :uncertainty-image="uncertaintyImage"
-        :uncertainty-mask="uncertaintyMask"
         :can-download="canDownloadResult"
         :downloading="downloading"
-        :busy="busy"
+        :busy="downloading || downloadingAll || proposing"
         @download="downloadResult"
         @label-state-change="handleLabelState"
         @update:brush-size="brushSize = $event"

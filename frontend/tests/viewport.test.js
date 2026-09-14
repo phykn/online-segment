@@ -4,6 +4,28 @@ import { ref } from 'vue'
 
 import { useViewport } from '../src/editor/viewport.js'
 
+test('wheel zoom keeps the image point under the pointer fixed', () => {
+  let viewport
+  const canvas = { width: 100, height: 100, getBoundingClientRect: () => {
+    const zoom = viewport?.zoom.value ?? 1
+    const transform = viewport?.canvasTransform.value ?? 'translate(0px, 0px) scale(1)'
+    const [, x, y] = transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\)/)
+    const left = 50 + Number(x) - 50 * zoom, top = 50 + Number(y) - 50 * zoom
+    return { left, top, width: 100 * zoom, height: 100 * zoom,
+      right: left + 100 * zoom, bottom: top + 100 * zoom }
+  } }
+  viewport = useViewport(ref(canvas), () => 24)
+  const event = { clientX: 75, clientY: 25, deltaY: -1 }
+  const before = viewport.getCanvasPoint(event)
+  viewport.handleZoomWheel(event)
+  const after = viewport.getCanvasPoint(event)
+  assert.ok(Math.abs(before.x - after.x) < 1e-8)
+  assert.ok(Math.abs(before.y - after.y) < 1e-8)
+  const transform = viewport.canvasTransform.value
+  viewport.setZoom(viewport.zoom.value)
+  assert.equal(viewport.canvasTransform.value, transform)
+})
+
 test('uses middle-button drag for panning instead of right-button drag', () => {
   const canvas = {
     getBoundingClientRect: () => ({

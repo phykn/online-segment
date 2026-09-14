@@ -253,6 +253,12 @@ export const usePainter = () => {
             allows,
             changes,
           ) || changed
+      } else if (operation.type === 'instance') {
+        const { instances, id, label } = operation
+        if (instances.width !== mask.width || instances.height !== mask.height) continue
+        for (let i = 0; i < mask.data.length; i += 1) {
+          if (instances.data[i] === id) changed = setLabel(mask, i, label, changes) || changed
+        }
       } else {
         changed =
           paintMaskCurve(
@@ -344,8 +350,17 @@ export const usePainter = () => {
   }
 
   const resetForImage = (image, canvas, mirrorCanvas = null) => {
+    const mask = getLabelMask(image)
+    if (!mask?.labeledCount) return
+    const before = new Map()
+    for (let i = 0; i < mask.data.length; i += 1) {
+      if (mask.data[i] !== ERASER_LABEL) before.set(i, mask.data[i])
+    }
     if (!resetLabelMask(image)) return
-    history.delete(image)
+    const strokes = getHistory(image)
+    strokes.undo.push({ before, after: new Map([...before.keys()].map(i => [i, ERASER_LABEL])) })
+    if (strokes.undo.length > HISTORY_LIMIT) strokes.undo.shift()
+    strokes.redo = []
     if (image !== currentImage) return
     render(canvas)
     render(mirrorCanvas, true)
@@ -391,6 +406,16 @@ export const usePainter = () => {
   }
 
   return {
+    fillInstance: (instances, point, label) => {
+      const mask = getCurrentMask()
+      if (!mask || !instances || mask.width !== instances.width || mask.height !== instances.height) return false
+      const x = Math.floor(point.x), y = Math.floor(point.y)
+      if (x < 0 || y < 0 || x >= mask.width || y >= mask.height) return false
+      const id = instances.data[y * instances.width + x]
+      if (id <= 0) return false
+      pendingOperations.push({ type: 'instance', instances, id, label })
+      return true
+    },
     beginStroke,
     cancelStroke,
     clear,

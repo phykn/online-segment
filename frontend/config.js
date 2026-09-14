@@ -24,6 +24,7 @@ export const ERASER_LABEL = -1
 export const LABELS = [
   {
     value: 0,
+    name: 'Class Q',
     key: 'Q',
     color: '#ef476f',
     cursorColor: '#b90f3b',
@@ -31,6 +32,7 @@ export const LABELS = [
   },
   {
     value: 1,
+    name: 'Class W',
     key: 'W',
     color: '#118ab2',
     cursorColor: '#006b91',
@@ -38,6 +40,7 @@ export const LABELS = [
   },
   {
     value: 2,
+    name: 'Class E',
     key: 'E',
     color: '#06a77d',
     cursorColor: '#007a5e',
@@ -45,6 +48,7 @@ export const LABELS = [
   },
   {
     value: 3,
+    name: 'Class R',
     key: 'R',
     color: '#8e5de7',
     cursorColor: '#6936c4',

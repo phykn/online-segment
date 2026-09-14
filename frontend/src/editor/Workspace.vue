@@ -1,16 +1,17 @@
 <script setup>
-import { ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { OPACITY, ZOOM } from '../../config.js'
-import { makeMaskConstraint } from './constraints'
 import { useCanvasInput } from './input'
 import { usePainter } from './painter'
 import ResultControls from './ResultControls.vue'
 import { getEditorSize } from './size'
 import { decodeImage } from '../images/decode'
 import { setOriginalImageSize } from '../images/metadata'
+import { resizeInstances } from '../model/instances.js'
 
 const props = defineProps({
+  instances: { type: Object, default: null },
   image: {
     type: File,
     default: null,
@@ -39,10 +40,6 @@ const props = defineProps({
     type: Number,
     required: true,
   },
-  uncertaintyMask: {
-    type: Object,
-    default: null,
-  },
   canDownload: {
     type: Boolean,
     default: false,
@@ -66,39 +63,47 @@ const emit = defineEmits([
 
 const imageCanvasRef = ref(null)
 const labelCanvasRef = ref(null)
-const resultCanvasRef = ref(null)
 const resultLabelOutlineCanvasRef = ref(null)
-const resultLabelCanvasRef = ref(null)
+const proposalCanvasRef = ref(null)
 const rootRef = ref(null)
+const stackRef = ref(null)
+const controlsRef = ref(null)
+const canvasHeight = ref(null)
+let resizeObserver = null
 const rendered = ref(false)
 const errorMessage = ref('')
 const resultOpacity = ref(OPACITY.default)
-const resultLabelsVisible = ref(false)
+const labelsVisible = ref(true)
 const uncertaintyVisible = ref(false)
-const unclearConstraint = shallowRef(null)
-const sharedPan = {
-  x: ref(0),
-  y: ref(0),
-}
+const predictionVisible = ref(true)
 
 const labelPainter = usePainter()
+const editorInstances = computed(() => rendered.value
+  ? resizeInstances(props.instances, imageCanvasRef.value?.width, imageCanvasRef.value?.height) : null)
 let renderId = 0
-let strokeConstrained = false
 
-const getPaintConstraint = () =>
-  uncertaintyVisible.value && unclearConstraint.value
-    ? unclearConstraint.value
-    : null
+const focus = () => {
+  const active = document.activeElement
+  if (active?.isContentEditable || (['INPUT', 'TEXTAREA', 'SELECT'].includes(active?.tagName)
+    && !['file', 'checkbox', 'range'].includes(active?.type))) return
+  if (rendered.value) stackRef.value?.focus({ preventScroll: true })
+}
+
+onMounted(() => {
+  resizeObserver = new ResizeObserver(() => {
+    const root = rootRef.value
+    const style = getComputedStyle(root)
+    canvasHeight.value = Math.max(64, root.clientHeight - parseFloat(style.paddingTop)
+      - parseFloat(style.paddingBottom) - (controlsRef.value?.offsetHeight ?? 0) - 8)
+  })
+  resizeObserver.observe(rootRef.value)
+  resizeObserver.observe(controlsRef.value)
+})
+onBeforeUnmount(() => resizeObserver?.disconnect())
 
 const resetLabels = (image) => {
-  labelPainter.resetForImage(
-    image,
-    labelCanvasRef.value,
-    props.resultImage ? resultLabelCanvasRef.value : null,
-  )
-  if (props.resultImage) {
-    labelPainter.render(resultLabelOutlineCanvasRef.value, true)
-  }
+  labelPainter.resetForImage(image, labelCanvasRef.value)
+  renderLabels()
   emit('label-state-change', {
     image,
     hasLabels: false,
@@ -120,15 +125,11 @@ const emitLabelState = (changed = false, committed = false) => {
 const drawResized = (source, sourceWidth, sourceHeight, file) => {
   const imageCanvas = imageCanvasRef.value
   const labelCanvas = labelCanvasRef.value
-  const resultCanvas = resultCanvasRef.value
   const resultLabelOutlineCanvas = resultLabelOutlineCanvasRef.value
-  const resultLabelCanvas = resultLabelCanvasRef.value
   if (
     !imageCanvas ||
     !labelCanvas ||
-    !resultCanvas ||
-    !resultLabelOutlineCanvas ||
-    !resultLabelCanvas
+    !resultLabelOutlineCanvas
   ) {
     throw new Error('Could not find the image canvas.')
   }
@@ -143,28 +144,17 @@ const drawResized = (source, sourceWidth, sourceHeight, file) => {
   imageCanvas.height = height
   labelCanvas.width = width
   labelCanvas.height = height
-  resultCanvas.width = width
-  resultCanvas.height = height
   resultLabelOutlineCanvas.width = width
   resultLabelOutlineCanvas.height = height
-  resultLabelCanvas.width = width
-  resultLabelCanvas.height = height
 
-  for (const canvas of [imageCanvas, resultCanvas]) {
-    const context = canvas.getContext('2d')
-    if (!context) throw new Error('Could not create the image canvas.')
-
-    context.imageSmoothingEnabled = true
-    context.imageSmoothingQuality = 'high'
-    context.drawImage(source, 0, 0, width, height)
-  }
+  const context = imageCanvas.getContext('2d')
+  if (!context) throw new Error('Could not create the image canvas.')
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+  context.drawImage(source, 0, 0, width, height)
 
   labelPainter.prepare(file, width, height)
-  labelPainter.render(labelCanvas)
-  if (props.resultImage) {
-    labelPainter.render(resultLabelOutlineCanvas, true)
-    labelPainter.render(resultLabelCanvas, true)
-  }
+  renderLabels()
   emitLabelState()
 }
 
@@ -174,7 +164,6 @@ const stampLabel = (point, radius, label) => {
     point,
     radius,
     label,
-    props.resultImage ? resultLabelCanvasRef.value : null,
   )
 }
 
@@ -186,38 +175,23 @@ const paintLabelLine = (from, control, to, radius, label) => {
     to,
     radius,
     label,
-    props.resultImage ? resultLabelCanvasRef.value : null,
   )
 }
 
 const finishLabelStroke = () => {
-  const constrained = strokeConstrained
-  strokeConstrained = false
   const changed = labelPainter.commitStroke()
-  if (constrained) {
-    labelPainter.render(labelCanvasRef.value)
-    if (props.resultImage) {
-      labelPainter.render(resultLabelCanvasRef.value, true)
-    }
-  }
-  if (props.resultImage) {
-    labelPainter.render(resultLabelOutlineCanvasRef.value, true)
-  }
+  renderLabels()
   if (labelPainter.isReady()) emitLabelState(changed, true)
 }
 
 const cancelLabelStroke = () => {
-  strokeConstrained = false
   labelPainter.cancelStroke()
   renderLabels()
 }
 
 const renderLabels = () => {
   labelPainter.render(labelCanvasRef.value)
-  if (props.resultImage) {
-    labelPainter.render(resultLabelOutlineCanvasRef.value, true)
-    labelPainter.render(resultLabelCanvasRef.value, true)
-  }
+  labelPainter.render(resultLabelOutlineCanvasRef.value, true)
 }
 
 const changeHistory = (action) => {
@@ -230,12 +204,16 @@ const changeHistory = (action) => {
 const undoStroke = () => changeHistory(labelPainter.undo)
 const redoStroke = () => changeHistory(labelPainter.redo)
 
+const togglePrediction = () => {
+  if (props.image) predictionVisible.value = !predictionVisible.value
+}
+
 const toggleUncertainty = () => {
   uncertaintyVisible.value = !uncertaintyVisible.value
 }
 
 const toggleEdits = () => {
-  resultLabelsVisible.value = !resultLabelsVisible.value
+  labelsVisible.value = !labelsVisible.value
 }
 
 const adjustOpacity = (amount) => {
@@ -244,44 +222,25 @@ const adjustOpacity = (amount) => {
 }
 
 const beginLabelStroke = () => {
-  const constraint = getPaintConstraint()
-  strokeConstrained = Boolean(constraint)
-  labelPainter.beginStroke(constraint)
+  labelPainter.beginStroke()
 }
 
-const makeInput = (canvasRef) =>
-  useCanvasInput({
-    canvasRef,
-    sharedPan,
-    getBrushSize: () => props.brushSize,
-    setBrushSize: (size) => emit('update:brush-size', size),
-    updateZoom: (zoom) => emit('update:zoom', zoom),
-    getLabel: () => props.selectedLabel,
-    canEdit: () =>
-      rendered.value && !props.busy && labelPainter.isReady(),
-    start: beginLabelStroke,
-    stamp: stampLabel,
-    line: paintLabelLine,
-    finish: finishLabelStroke,
-    abort: cancelLabelStroke,
-  })
+const imageInput = useCanvasInput({
+  canvasRef: imageCanvasRef,
+  getBrushSize: () => props.brushSize,
+  setBrushSize: (size) => emit('update:brush-size', size),
+  updateZoom: (zoom) => emit('update:zoom', zoom),
+  getLabel: () => props.selectedLabel,
+  canEdit: () => rendered.value && !props.busy && labelPainter.isReady(),
+  start: beginLabelStroke,
+  selectRegion: (point, label) => labelPainter.fillInstance(editorInstances.value, point, label),
+  stamp: stampLabel,
+  line: paintLabelLine,
+  finish: finishLabelStroke,
+  abort: cancelLabelStroke,
+})
 
-const imageInput = makeInput(labelCanvasRef)
-const resultInput = makeInput(resultCanvasRef)
-const inputs = [imageInput, resultInput]
-
-const {
-  canvasTransform,
-  cursorStyle,
-  cursorVisible,
-  panning,
-} = imageInput
-const {
-  canvasTransform: resultTransform,
-  cursorStyle: resultCursorStyle,
-  cursorVisible: resultCursorVisible,
-  panning: resultPanning,
-} = resultInput
+const { canvasTransform, cursorStyle, cursorVisible, panning } = imageInput
 
 watch(
   [() => props.image, () => props.targetWidth],
@@ -289,7 +248,7 @@ watch(
     const currentRenderId = ++renderId
     rendered.value = false
     errorMessage.value = ''
-    for (const input of inputs) input.reset()
+    imageInput.reset()
     if (props.zoom !== ZOOM.default) emit('update:zoom', ZOOM.default)
     labelPainter.clear()
     if (rootRef.value) rootRef.value.scrollTop = 0
@@ -298,9 +257,7 @@ watch(
       for (const canvas of [
         imageCanvasRef.value,
         labelCanvasRef.value,
-        resultCanvasRef.value,
         resultLabelOutlineCanvasRef.value,
-        resultLabelCanvasRef.value,
       ]) {
         if (canvas) {
           canvas.width = 0
@@ -323,6 +280,7 @@ watch(
         file,
       )
       rendered.value = true
+      nextTick(focus)
     } catch (error) {
       if (currentRenderId === renderId) {
         errorMessage.value = 'Could not display the image.'
@@ -338,7 +296,7 @@ watch(
   () => props.busy,
   (busy) => {
     if (busy) {
-      for (const input of inputs) input.cancel()
+      imageInput.cancel()
     }
   },
 )
@@ -346,32 +304,40 @@ watch(
 watch(
   () => props.zoom,
   (zoom) => {
-    for (const input of inputs) input.setZoom(zoom)
+    imageInput.setZoom(zoom)
+    nextTick(imageInput.refreshCursor)
   },
 )
 
-watch(
-  () => props.resultImage,
-  (resultImage) => {
-    if (!resultImage || !labelPainter.isReady()) return
+watch([() => props.selectedLabel, () => props.brushSize], imageInput.refreshCursor)
 
-    labelPainter.render(resultLabelOutlineCanvasRef.value, true)
-    labelPainter.render(resultLabelCanvasRef.value, true)
-  },
-)
-
-watch(
-  () => props.uncertaintyMask,
-  (mask) => {
-    unclearConstraint.value = makeMaskConstraint(mask)
-  },
-  { immediate: true },
-)
+const renderProposals = () => {
+  const canvas = proposalCanvasRef.value, mask = editorInstances.value
+  if (!canvas) return
+  canvas.width = mask?.width ?? 0
+  canvas.height = mask?.height ?? 0
+  if (!mask) return
+  const context = canvas.getContext('2d')
+  const pixels = context.createImageData(mask.width, mask.height)
+  for (let y = 0; y < mask.height; y += 1) {
+    for (let x = 0; x < mask.width; x += 1) {
+      const i = y * mask.width + x, id = mask.data[i]
+      if (id > 0 && (x === 0 || y === 0 || x === mask.width - 1 || y === mask.height - 1 ||
+        mask.data[i-1] !== id || mask.data[i+1] !== id || mask.data[i-mask.width] !== id || mask.data[i+mask.width] !== id)) {
+        pixels.data.set([255, 210, 95, 210], i * 4)
+      }
+    }
+  }
+  context.putImageData(pixels, 0, 0)
+}
+watch(editorInstances, () => nextTick(renderProposals), { immediate: true })
 
 defineExpose({
+  focus,
   resetLabels,
   redoStroke,
   undoStroke,
+  togglePrediction,
   toggleUncertainty,
   toggleEdits,
   adjustOpacity,
@@ -379,15 +345,26 @@ defineExpose({
 </script>
 
 <template>
-  <section ref="rootRef" class="workspace" aria-label="Image workspace">
+  <section ref="rootRef" class="workspace" aria-label="Image workspace"
+    :style="canvasHeight ? { '--canvas-max-height': canvasHeight + 'px' } : undefined">
     <div class="workspace__content">
-      <div class="workspace__stage">
-        <div v-show="image && rendered" class="canvas-viewport">
+      <div v-show="image && rendered" class="workspace__editor">
+        <div class="canvas-viewport">
           <div
+            ref="stackRef"
             class="canvas-stack"
+            tabindex="-1"
+            :aria-label="image ? image.name + ' editor' : undefined"
             :class="{ 'canvas-stack--panning': panning }"
             :style="{ transform: canvasTransform }"
             @wheel="imageInput.wheel"
+            @pointerdown="imageInput.pointerDown"
+            @pointermove="imageInput.pointerMove"
+            @pointerup="imageInput.pointerEnd"
+            @pointercancel="imageInput.pointerCancel"
+            @pointerleave="imageInput.pointerLeave"
+            @contextmenu.prevent
+            @auxclick.prevent
           >
             <canvas
               ref="imageCanvasRef"
@@ -395,19 +372,41 @@ defineExpose({
               role="img"
               :aria-label="image?.name"
             ></canvas>
+            <img
+              v-if="resultImage"
+              v-show="predictionVisible"
+              class="workspace__mask"
+              :src="resultImage"
+              :style="{ opacity: resultOpacity }"
+              draggable="false"
+              alt="Prediction mask over the original image"
+            />
             <canvas
+              ref="proposalCanvasRef"
+              v-show="instances"
+              class="workspace__region-outlines"
+              aria-hidden="true"
+            ></canvas>
+            <canvas
+              v-show="labelsVisible && resultImage"
+              ref="resultLabelOutlineCanvasRef"
+              class="workspace__result-label-outline"
+              aria-hidden="true"
+            ></canvas>
+            <canvas
+              v-show="labelsVisible"
               ref="labelCanvasRef"
               class="workspace__labels"
-              tabindex="-1"
               :aria-label="image ? image.name + ' labels' : undefined"
-              @pointerdown="imageInput.pointerDown"
-              @pointermove="imageInput.pointerMove"
-              @pointerup="imageInput.pointerEnd"
-              @pointercancel="imageInput.pointerCancel"
-              @pointerleave="imageInput.pointerLeave"
-              @contextmenu.prevent
-              @auxclick.prevent
             ></canvas>
+            <img
+              v-if="resultImage && uncertaintyImage"
+              v-show="uncertaintyVisible"
+              class="workspace__uncertainty"
+              :src="uncertaintyImage"
+              draggable="false"
+              alt="Unclear prediction areas"
+            />
             <span
               v-show="cursorVisible"
               class="workspace__brush-cursor"
@@ -416,80 +415,25 @@ defineExpose({
             ></span>
           </div>
         </div>
-        <p v-if="image && !rendered && !errorMessage" class="workspace__status">
-          Loading...
-        </p>
-        <p v-if="errorMessage" class="workspace__error" role="alert">
-          {{ errorMessage }}
-        </p>
-      </div>
-      <div v-show="resultImage" class="workspace__result">
-        <div class="workspace__result-body">
-          <div class="workspace__result-viewport">
-            <div
-              class="workspace__result-stack"
-              tabindex="-1"
-              :class="{ 'canvas-stack--panning': resultPanning }"
-              :style="{ transform: resultTransform }"
-              @wheel="resultInput.wheel"
-              @pointerdown="resultInput.pointerDown"
-              @pointermove="resultInput.pointerMove"
-              @pointerup="resultInput.pointerEnd"
-              @pointercancel="resultInput.pointerCancel"
-              @pointerleave="resultInput.pointerLeave"
-              @contextmenu.prevent
-              @auxclick.prevent
-            >
-              <canvas
-                ref="resultCanvasRef"
-                class="workspace__result-image"
-                aria-hidden="true"
-              ></canvas>
-              <img
-                class="workspace__mask"
-                :src="resultImage"
-                :style="{ opacity: resultOpacity }"
-                draggable="false"
-                alt="Prediction mask over the original image"
-              />
-              <canvas
-                v-show="resultLabelsVisible"
-                ref="resultLabelOutlineCanvasRef"
-                class="workspace__result-label-outline"
-                aria-hidden="true"
-              ></canvas>
-              <canvas
-                v-show="resultLabelsVisible"
-                ref="resultLabelCanvasRef"
-                class="workspace__result-labels"
-                aria-hidden="true"
-              ></canvas>
-              <img
-                v-show="uncertaintyVisible"
-                class="workspace__uncertainty"
-                :src="uncertaintyImage"
-                draggable="false"
-                alt="Unclear prediction areas"
-              />
-              <span
-                v-show="resultCursorVisible"
-                class="workspace__brush-cursor"
-                :style="resultCursorStyle"
-                aria-hidden="true"
-              ></span>
-            </div>
-          </div>
-          <ResultControls
-            v-model:unclear="uncertaintyVisible"
-            v-model:edits="resultLabelsVisible"
-            v-model:opacity="resultOpacity"
-            :can-download="canDownload"
-            :downloading="downloading"
-            :busy="busy"
-            @download="emit('download')"
-          />
+        <div ref="controlsRef" class="workspace__controls">
+        <ResultControls
+          v-model:prediction="predictionVisible"
+          v-model:unclear="uncertaintyVisible"
+          v-model:edits="labelsVisible"
+          v-model:opacity="resultOpacity"
+          :can-download="canDownload"
+          :downloading="downloading"
+          :busy="busy"
+          @download="emit('download')"
+        />
         </div>
       </div>
+      <p v-if="image && !rendered && !errorMessage" class="workspace__status">
+        Loading...
+      </p>
+      <p v-if="errorMessage" class="workspace__error" role="alert">
+        {{ errorMessage }}
+      </p>
     </div>
   </section>
 </template>

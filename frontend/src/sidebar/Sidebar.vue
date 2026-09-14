@@ -22,10 +22,6 @@ const props = defineProps({
     type: Set,
     required: true,
   },
-  resizeWidth: {
-    type: Number,
-    default: null,
-  },
   busy: {
     type: Boolean,
     required: true,
@@ -46,10 +42,6 @@ const props = defineProps({
     type: String,
     default: '',
   },
-  sessionId: {
-    type: String,
-    default: '',
-  },
 })
 
 const emit = defineEmits([
@@ -58,7 +50,6 @@ const emit = defineEmits([
   'remove-image',
   'select-image',
   'download-all',
-  'update:resize-width',
 ])
 
 const fileInput = ref(null)
@@ -115,33 +106,6 @@ watch(
 )
 
 onBeforeUnmount(stopDownloadCountdown)
-
-const formatWidth = (width) => (width == null ? '' : String(width))
-const widthDraft = ref(formatWidth(props.resizeWidth))
-
-watch(
-  () => props.resizeWidth,
-  (width) => {
-    widthDraft.value = formatWidth(width)
-  },
-)
-
-const commitWidth = () => {
-  const draft = widthDraft.value.trim()
-  if (!draft) {
-    widthDraft.value = ''
-    emit('update:resize-width', null)
-    return
-  }
-
-  const width = Math.round(Number(draft))
-  if (Number.isFinite(width) && width > 0) {
-    widthDraft.value = String(width)
-    emit('update:resize-width', width)
-  } else {
-    widthDraft.value = formatWidth(props.resizeWidth)
-  }
-}
 
 const openFilePicker = () => {
   fileInput.value?.click()
@@ -215,49 +179,20 @@ const requestDownloadAll = () => {
     />
 
     <template v-else>
-    <div class="sidebar__top-controls">
-      <label class="resize-option">
-        <span>Width</span>
-        <input
-          v-model="widthDraft"
-          type="number"
-          min="1"
-          step="1"
-          title="Leave empty to use original image size"
-          @keydown.enter="commitWidth"
-          @blur="commitWidth"
-        />
-        <span class="resize-option__unit">px</span>
-      </label>
-      <button
-        class="sidebar__collapse"
-        type="button"
-        aria-label="Collapse sidebar"
-        title="Collapse sidebar"
-        @click="collapsed = true"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.8"
-          aria-hidden="true"
-        >
-          <path d="m15 5-7 7 7 7" />
-        </svg>
-      </button>
-    </div>
-
     <input
       ref="fileInput"
       class="visually-hidden"
       type="file"
+      tabindex="-1"
+      aria-hidden="true"
       multiple
       :disabled="props.busy"
       :accept="IMAGE_FILE_ACCEPT"
       @change="handleFileSelect"
     />
 
+    <slot name="settings" :collapse="() => { collapsed = true }" />
+    <div class="sidebar__top-controls">
     <button
       class="upload-button"
       :class="{ 'upload-button--dragging': isDragging }"
@@ -280,9 +215,9 @@ const requestDownloadAll = () => {
         <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
         <path d="M5 14v5h14v-5" />
       </svg>
-      <span class="upload-button__title">Upload Images</span>
-      <span class="upload-button__hint">Drop files here or click to browse</span>
+      <span class="upload-button__title">Add images</span>
     </button>
+    </div>
 
     <ImageList
       :images="images"
@@ -358,15 +293,15 @@ const requestDownloadAll = () => {
       </div>
 
       <ul class="shortcut-list" aria-label="Canvas controls">
-        <li><kbd>T</kbd><span>Eraser</span></li>
-        <li><kbd>Space</kbd><span>Apply</span></li>
-        <li><kbd>Ctrl + Z</kbd><span>Undo brush</span></li>
-        <li><kbd>Ctrl + Shift + Z</kbd><span>Redo brush</span></li>
+        <li><kbd>Click</kbd><span>Select region</span></li>
+        <li><kbd>Drag</kbd><span>Paint</span></li>
+        <li><kbd>Shift + drag</kbd><span>Paint anywhere</span></li>
+        <li><kbd>T</kbd><span>Erase</span></li>
+        <li><kbd>Space</kbd><span>Train & predict</span></li>
+        <li><kbd>Ctrl + Z</kbd><span>Undo</span></li>
+        <li><kbd>Ctrl + Shift + Z</kbd><span>Redo</span></li>
         <li><kbd>Middle drag</kbd><span>Pan</span></li>
       </ul>
-      <span v-if="sessionId" class="session-id">
-        Session: {{ sessionId }}
-      </span>
     </div>
     </template>
 

@@ -6,9 +6,12 @@ export const keyAction = (code, key = '') => {
   if (code === 'KeyT') return { name: 'eraser' }
   if (code === 'Space') return { name: 'apply' }
   if (code === 'Digit1' || code === 'Numpad1') {
-    return { name: 'toggle-uncertainty' }
+    return { name: 'toggle-prediction' }
   }
   if (code === 'Digit2' || code === 'Numpad2') {
+    return { name: 'toggle-uncertainty' }
+  }
+  if (code === 'Digit3' || code === 'Numpad3') {
     return { name: 'toggle-edits' }
   }
   if (key === '+' || code === 'NumpadAdd') {

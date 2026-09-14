@@ -33,6 +33,8 @@ test('exportAll uploads images in bounded batches', async () => {
   resetSession()
   const calls = []
   const progress = []
+  const sampleFiles = Array.from({ length: 17 }, (_, index) => namedBlob(`${index+1}.png`, String(index+1)))
+  const correction = {width:1,height:1,runs:[[3,1]]}
   const originalFetch = globalThis.fetch
   globalThis.fetch = async (url, options = {}) => {
     calls.push([url, options])
@@ -56,11 +58,12 @@ test('exportAll uploads images in bounded batches', async () => {
 
   try {
     const result = await exportAll(
-      Array.from({ length: 17 }, (_, index) =>
-        namedBlob(`${index + 1}.png`, String(index + 1)),
-      ),
+      sampleFiles,
       512,
       (value) => progress.push(value),
+      undefined,
+      19,
+      new Map([[sampleFiles[0],correction]]),
     )
     assert.equal(await result.text(), 'zip')
   } finally {
@@ -81,6 +84,11 @@ test('exportAll uploads images in bounded batches', async () => {
   assert.equal(uploads[1][1].body.getAll('files').length, 1)
   assert.equal(uploads[1][1].body.getAll('files')[0].name, '17.png')
   assert.equal(uploads[0][1].body.has('labels'), false)
+  assert.equal(uploads[0][1].body.get('diameter'),'19')
+  const sentEdits=JSON.parse(uploads[0][1].body.get('edits'))
+  assert.equal(sentEdits.length,16)
+  assert.deepEqual(sentEdits[0],correction)
+  assert.equal(sentEdits[1],null)
   assert.deepEqual(progress, [94, 100])
 })
 

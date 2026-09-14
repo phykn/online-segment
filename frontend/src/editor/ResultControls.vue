@@ -2,6 +2,10 @@
 import { OPACITY } from '../../config.js'
 
 defineProps({
+  prediction: {
+    type: Boolean,
+    required: true,
+  },
   unclear: {
     type: Boolean,
     required: true,
@@ -30,6 +34,7 @@ defineProps({
 
 const emit = defineEmits([
   'download',
+  'update:prediction',
   'update:unclear',
   'update:edits',
   'update:opacity',
@@ -39,11 +44,25 @@ const emit = defineEmits([
 <template>
   <div class="workspace__result-controls">
     <label class="workspace__switch-control">
-      <span>Unclear <kbd aria-hidden="true">1</kbd></span>
+      <span>Prediction <kbd aria-hidden="true">1</kbd></span>
+      <input
+        class="workspace__switch-input"
+        title="Show prediction colors"
+        type="checkbox"
+        :checked="prediction"
+        @change="emit('update:prediction', $event.target.checked)"
+      />
+      <span class="workspace__switch-track" aria-hidden="true">
+        <span></span>
+      </span>
+    </label>
+    <label class="workspace__switch-control">
+      <span>Unclear <kbd aria-hidden="true">2</kbd></span>
       <input
         class="workspace__switch-input"
         type="checkbox"
         :checked="unclear"
+        title="Show uncertain pixels"
         @change="emit('update:unclear', $event.target.checked)"
       />
       <span class="workspace__switch-track" aria-hidden="true">
@@ -51,11 +70,12 @@ const emit = defineEmits([
       </span>
     </label>
     <label class="workspace__switch-control">
-      <span>Edits <kbd aria-hidden="true">2</kbd></span>
+      <span>Edits <kbd aria-hidden="true">3</kbd></span>
       <input
         class="workspace__switch-input"
         type="checkbox"
         :checked="edits"
+        title="Show training labels"
         @change="emit('update:edits', $event.target.checked)"
       />
       <span class="workspace__switch-track" aria-hidden="true">

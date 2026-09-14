@@ -6,16 +6,18 @@ import {
   rasterizeUncertainty,
 } from '../src/output/raster.js'
 
-test('rasterizes label RLE runs into byte-exact opaque RGBA', () => {
-  const target = new Uint8ClampedArray(4 * 4)
+test('renders every class including Q opaquely and only unlabeled pixels transparently', () => {
+  const target = new Uint8ClampedArray(5 * 4)
   const result = rasterizeLabels(
     {
-      width: 4,
+      width: 5,
       height: 1,
       runs: [
         [-1, 1],
         [0, 1],
-        [3, 2],
+        [1, 1],
+        [2, 1],
+        [3, 1],
       ],
     },
     target,
@@ -25,7 +27,8 @@ test('rasterizes label RLE runs into byte-exact opaque RGBA', () => {
   assert.deepEqual(Array.from(result), [
     0, 0, 0, 0,
     239, 71, 111, 255,
-    142, 93, 231, 255,
+    17, 138, 178, 255,
+    6, 167, 125, 255,
     142, 93, 231, 255,
   ])
 })

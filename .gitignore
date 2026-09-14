@@ -1,6 +1,10 @@
 # Python
 backend/.venv/
+backend/.venv-cellpose/
 backend/models/
+backend/weights/*.pth
+backend/weights/*.pt
+!backend/weights/cpdino-vitb.pth
 __pycache__/
 *.py[cod]
 .pytest_cache/
