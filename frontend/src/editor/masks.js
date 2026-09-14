@@ -61,6 +61,14 @@ export const ensureLabelMask = (image, width, height) => {
 
 export const getLabelMask = (image) => masksByImage.get(image) ?? null
 
+export const restoreLabelMask = (image, snapshot) => {
+  const data = new Int8Array(snapshot.data)
+  const mask = { width: snapshot.width, height: snapshot.height, data,
+    labeledCount: data.reduce((count, label) => count + (label !== ERASER_LABEL), 0) }
+  variantsByImage.delete(image)
+  return storeMask(image, mask)
+}
+
 export const resizeLabelMask = (image, width, height) => {
   const mask = getLabelMask(image)
   if (!mask || (mask.width === width && mask.height === height)) return mask

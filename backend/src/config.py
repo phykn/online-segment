@@ -34,6 +34,8 @@ class ExportConfig(BaseModel):
 class FeatureConfig(BaseModel):
     kind: Literal['image', 'encoder', 'hybrid'] = 'image'
     components: Literal[32, 64] = 32
+    texture: bool = False
+    flow: bool = True
     cache_mb: int = Field(default=256, gt=0)
     cellpose: Literal['none', 'foreground', 'statistics'] = 'statistics'
 

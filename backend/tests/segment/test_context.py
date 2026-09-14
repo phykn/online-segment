@@ -16,8 +16,8 @@ class ContextTests(unittest.TestCase):
         one, two = context.pixels(indices), context.pixels(indices, scale=2)
         self.assertEqual(one.shape[1], len(NAMES))
         self.assertGreater(one[1, 3], one[0, 3])
-        np.testing.assert_allclose(two[:, 2:6], one[:, 2:6]*2)
-        np.testing.assert_array_equal(two[:, 6:-1], one[:, 6:-1])
+        np.testing.assert_allclose(two[:, 2:5], one[:, 2:5]*2)
+        np.testing.assert_array_equal(two[:, 5:-1], one[:, 5:-1])
         np.testing.assert_array_equal(one[:, -1], [9, 49, 0])
         np.testing.assert_array_equal(two[:, -1], one[:, -1]*4)
         # Every pixel of the same particle shares its area, including its edge.
@@ -49,7 +49,7 @@ class ContextTests(unittest.TestCase):
     def test_scale_is_part_of_feature_and_training_identity(self):
         image = np.zeros((9, 11, 3), np.uint8); masks = np.ones((9, 11), np.int32)
         model = Segmenter(); labels = np.zeros(masks.shape, np.int8); labels[:, 5:] = 1
-        with patch.object(config.feature, 'kind', 'image'), patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run', return_value=(masks, np.zeros(masks.shape, np.float32), None)) as run:
+        with patch.object(config.feature, 'kind', 'image'), patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run', return_value=(masks, np.zeros(masks.shape, np.float32), None, None)) as run:
             one = model.feature(image); two = model.feature(image, scale=2)
             self.assertIsNot(one, two)
             self.assertIs(one.context, two.context)

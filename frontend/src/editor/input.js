@@ -21,6 +21,7 @@ export const useCanvasInput = ({
   line,
   finish,
   abort = () => {},
+  hover = () => {},
 }) => {
   const viewport = useViewport(canvasRef, getBrushSize, sharedPan)
   let painting = false
@@ -35,6 +36,7 @@ export const useCanvasInput = ({
     const label = getLabel()
     const color =
       label === ERASER_LABEL ? 'var(--body)' : LABELS[label].cursorColor
+    hover(painting ? null : viewport.getCanvasPoint(event), event)
     return viewport.updateCursor(event, color)
   }
 
@@ -51,6 +53,7 @@ export const useCanvasInput = ({
     viewport.stopPan()
     viewport.hideCursor()
     cursorPoint = null
+    hover(null)
     if (wasPainting) finish()
   }
 
@@ -85,6 +88,7 @@ export const useCanvasInput = ({
     if (!canEdit() || activePointerId !== null) return
 
     if (event.button === MIDDLE_BUTTON) {
+      hover(null)
       event.currentTarget.focus({ preventScroll: true })
       viewport.startPan(event)
       if (viewport.panning.value) activePointerId = event.pointerId
@@ -187,6 +191,7 @@ export const useCanvasInput = ({
     }
     viewport.hideCursor()
     cursorPoint = null
+    hover(null)
   }
 
   return {

@@ -1,5 +1,5 @@
 <script setup>
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { BRUSH_SIZE, ERASER_LABEL, ZOOM } from '../config.js'
 import {
@@ -13,11 +13,14 @@ import {
 import Toolbar from './editor/Toolbar.vue'
 import Workspace from './editor/Workspace.vue'
 import { useImages } from './images/collection'
-import { getSession, onSessionChange } from './api/session'
+import { getSession, onSessionChange, resetSession } from './api/session'
 import { useModel } from './model/useModel'
 import { useProposals } from './model/useProposals'
 import Sidebar from './sidebar/Sidebar.vue'
-import ProcessingControls from './sidebar/ProcessingControls.vue'
+import ToolsSidebar from './sidebar/ToolsSidebar.vue'
+import { readProject, writeProject } from './project/file.js'
+import { saveBlob } from './output/download.js'
+import { hasImageLabels } from './editor/masks.js'
 
 const resizeWidth = ref(null)
 const cellpose = ref({ diameter: null, cellprob_threshold: 0, flow_threshold: 0.4, min_area: 8 })
@@ -26,6 +29,9 @@ const brushSize = ref(BRUSH_SIZE.default)
 const zoom = ref(ZOOM.default)
 const workspaceRef = ref(null)
 const sessionId = ref('')
+const projectBusy = ref(false)
+const projectDirty = ref(false)
+const projectName = ref('project.segment.json')
 let stopSession = () => {}
 
 const {
@@ -52,7 +58,7 @@ const {
   downloadingAll,
   downloadProgress,
   enabled,
-  predicting,
+  predictionStatus,
   updateEdits,
   error: modelError,
   resultImage,
@@ -69,7 +75,54 @@ const {
   downloadResult,
 } = model
 
-const { instances, proposing, propose, reset: resetProposals } = useProposals({ selectedImage, resizeWidth, cellpose, error: modelError })
+const proposals = useProposals({ selectedImage, resizeWidth, cellpose, error: modelError })
+const { instances, proposing, propose, reset: resetProposals } = proposals
+
+watch([() => images.value.slice(), resizeWidth, cellpose], () => { projectDirty.value = true }, { deep: true })
+const protectProject = event => {
+  if (!projectDirty.value || !images.value.length) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+const saveProject = async () => {
+  if (projectBusy.value || busy.value || proposing.value || !images.value.length) return
+  projectBusy.value = true
+  clearError()
+  try {
+    await nextTick()
+    const blob = await writeProject(images.value, {
+      width: resizeWidth.value, cellpose: cellpose.value, selectedLabel: selectedLabel.value, brushSize: brushSize.value,
+    }, selectedIndex.value, enabled.value, proposals.snapshot)
+    saveBlob(blob, projectName.value)
+    projectDirty.value = false
+  } catch (error) { modelError.value = error.message }
+  finally { projectBusy.value = false }
+}
+const openProject = async file => {
+  if (!file || projectBusy.value || busy.value || proposing.value) return
+  projectBusy.value = true
+  clearError()
+  try {
+    const loaded = await readProject(file)
+    if (projectDirty.value && images.value.length && !window.confirm('Replace the current unsaved project?')) return
+    resetSession()
+    resetModel()
+    resetProposals()
+    resizeWidth.value = loaded.settings.width
+    cellpose.value = loaded.settings.cellpose
+    selectedLabel.value = loaded.settings.selectedLabel
+    brushSize.value = loaded.settings.brushSize
+    images.value = loaded.images
+    selectedIndex.value = loaded.selectedIndex
+    labeledImages.value = new Set(loaded.images.filter(hasImageLabels))
+    proposals.restore(loaded.images, loaded.regions)
+    projectName.value = file.name
+    await nextTick()
+    projectDirty.value = false
+    if (loaded.enabled) await predict()
+  } catch (error) { modelError.value = error.message }
+  finally { projectBusy.value = false }
+}
 
 const applySettings = async ({ width, cellpose: parameters }) => {
   if (busy.value || proposing.value) return
@@ -83,11 +136,13 @@ const applySettings = async ({ width, cellpose: parameters }) => {
   clearError()
   if (selectedImage.value) {
     await propose()
+    if (!modelError.value) projectDirty.value = true
     if (!modelError.value && retrain) await predict()
   }
 }
 
 const handleShortcut = (event) => {
+  if (projectBusy.value) return
   if (event.isComposing || isInteractiveTarget(event.target)) return
   if (isRedoShortcut(event)) {
     if (!event.repeat) workspaceRef.value?.redoStroke()
@@ -142,6 +197,7 @@ onMounted(() => {
   window.addEventListener('keydown', handleShortcut)
   window.addEventListener('keyup', handleKeyUp)
   window.addEventListener('blur', clearWheelKeys)
+  window.addEventListener('beforeunload', protectProject)
   stopSession = onSessionChange((id) => {
     if (sessionId.value && sessionId.value !== id) { resetProposals(); model.resetSessionResults() }
     sessionId.value = id
@@ -152,6 +208,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleShortcut)
   window.removeEventListener('keyup', handleKeyUp)
   window.removeEventListener('blur', clearWheelKeys)
+  window.removeEventListener('beforeunload', protectProject)
   clearWheelKeys()
   stopSession()
 })
@@ -198,6 +255,7 @@ const selectAt = (index) => {
 const handleLabelState = (state) => {
   updateLabelState(state)
   if (state.changed) clearError()
+  if (state.changed) projectDirty.value = true
   if (state.changed && state.committed) updateEdits()
 }
 </script>
@@ -208,28 +266,23 @@ const handleLabelState = (state) => {
       :images="images"
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
-      :busy="busy || proposing"
+      :busy="busy || proposing || projectBusy"
       :downloading-all="downloadingAll"
       :download-progress="downloadProgress"
       :can-download-all="canDownloadAll"
-      :model-error="modelError"
+      @download-all="downloadAll"
       @add-images="addImages"
       @clear-images="clearAllImages"
       @remove-image="removeAt"
       @select-image="selectAt"
-      @download-all="downloadAll"
-    >
-      <template #settings="{ collapse }">
-        <ProcessingControls :width="resizeWidth" :parameters="cellpose" :busy="busy || proposing" :has-image="!!selectedImage" @apply="applySettings" @collapse="collapse" />
-      </template>
-    </Sidebar>
+    />
     <div class="editor-main">
       <Toolbar
         :selected-label="selectedLabel"
         :brush-size="brushSize"
         :zoom="zoom"
-        :predicting="predicting"
-        :can-reset="labeledImages.has(selectedImage) && !downloading && !downloadingAll"
+        :prediction-status="predictionStatus"
+        :can-reset="labeledImages.has(selectedImage) && !downloading && !downloadingAll && !projectBusy"
         @reset-labels="resetLabels"
         @update:selected-label="selectedLabel = $event"
         @update:brush-size="brushSize = $event"
@@ -247,12 +300,23 @@ const handleLabelState = (state) => {
         :uncertainty-image="uncertaintyImage"
         :can-download="canDownloadResult"
         :downloading="downloading"
-        :busy="downloading || downloadingAll || proposing"
+        :busy="downloading || downloadingAll || proposing || projectBusy"
         @download="downloadResult"
         @label-state-change="handleLabelState"
         @update:brush-size="brushSize = $event"
         @update:zoom="zoom = $event"
       />
     </div>
+    <ToolsSidebar
+      :images="images"
+      :width="resizeWidth"
+      :parameters="cellpose"
+      :has-image="!!selectedImage"
+      :busy="busy || proposing || projectBusy"
+      :model-error="modelError"
+      @apply="applySettings"
+      @save-project="saveProject"
+      @open-project="openProject"
+    />
   </main>
 </template>

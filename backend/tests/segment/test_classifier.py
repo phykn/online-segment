@@ -11,6 +11,7 @@ from src.api.model import predict as api_predict, proposals
 from src.api.schema import Mask, PredRequest, TrainingImage, ProposalRequest
 from src.data.mask import decode, encode
 from src.segment.model import Segmenter
+from src.segment.flow import Endpoints
 from src.segment.prediction import infer, predict
 
 
@@ -50,8 +51,8 @@ class ClassifierTests(unittest.TestCase):
             second = infer(image, segmenter, edits=swapped)
             self.assertEqual(second[0][12, 40], 2)
             self.assertEqual(second[0][12, 56], 1)
-            self.assertEqual(result[2]['training_samples'], 128)
-            self.assertEqual(result[2]['training_samples_by_class'], [0, 64, 64, 0])
+            self.assertEqual(result[2]['training_samples'], 16)
+            self.assertEqual(result[2]['training_samples_by_class'], [0, 8, 8, 0])
             self.assertEqual(result[2]['message'], '')
             self.assertEqual(result[3], [])
             run.assert_not_called()
@@ -73,7 +74,7 @@ class ClassifierTests(unittest.TestCase):
         payload = PredRequest(image=encoded(target), training=[TrainingImage(image=encoded(image), edits=mask_payload(edits))])
         response = api_predict(payload, session)
         self.assertEqual(decode(response.mask)[12, 56], 2)
-        self.assertEqual(response.summary['training_samples'], 128)
+        self.assertEqual(response.summary['training_samples'], 16)
         payload.training = []
         response = api_predict(payload, session)
         self.assertTrue((decode(response.mask) == -1).all())
@@ -93,7 +94,7 @@ class ClassifierTests(unittest.TestCase):
         segmenter = Segmenter()
         result = infer(image, segmenter, edits=edits)
         self.assertEqual(result[2]['classes'], [0, 1, 2])
-        self.assertEqual(result[2]['training_samples_by_class'], [8, 56, 64, 0])
+        self.assertEqual(result[2]['training_samples_by_class'], [4, 8, 8, 0])
         self.assertEqual(result[2]['message'], '')
         raw, unclear = segmenter.classifier.predict(segmenter.feature(image))
         np.testing.assert_array_equal(result[0], raw)
@@ -121,7 +122,7 @@ class ClassifierTests(unittest.TestCase):
     def test_proposal_ids_above_int8_range_are_preserved_and_never_train(self):
         image, _ = fixture(); model = Segmenter(); session = SimpleNamespace(lock=RLock(), segmenter=model)
         ids = np.arange(image.shape[0]*image.shape[1], dtype=np.int32).reshape(image.shape[:2])
-        with patch('src.segment.model.runtime.run', return_value=(ids, np.zeros(ids.shape, np.float32), None)) as run:
+        with patch('src.segment.model.runtime.run', return_value=(ids, np.zeros(ids.shape, np.float32), None, None)) as run:
             response = proposals(ProposalRequest(image=encoded(image)), session)
             self.assertEqual(response.runs, [(i, 1) for i in range(ids.size)])
             proposals(ProposalRequest(image=encoded(image)), session)
@@ -133,7 +134,8 @@ class ClassifierTests(unittest.TestCase):
         image, edits = fixture(); model = Segmenter()
         ids = np.zeros(edits.shape, np.int32); ids[:, :32] = 1000
         logits = np.zeros(edits.shape, np.float32)
-        with patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run', return_value=(ids, logits, None)) as run:
+        endpoints = Endpoints(np.indices(edits.shape).astype(np.float32), ids > 0)
+        with patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run', return_value=(ids, logits, None, endpoints)) as run:
             model.propose(image)
             first = infer(image, model, edits=edits)[0]
             # Different pixels of one proposed particle, and both classes outside it.
@@ -159,14 +161,14 @@ class ClassifierTests(unittest.TestCase):
         ids = np.ones(edits.shape, np.int32); logits = np.ones(edits.shape, np.float32)
         payload = PredRequest(image=encoded(image), cellpose=parameters, edits=mask_payload(edits),
                               training=[TrainingImage(image=encoded(image), edits=mask_payload(edits))])
-        with patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run', return_value=(ids, logits, None)) as run:
+        with patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run', return_value=(ids, logits, None, None)) as run:
             proposals(ProposalRequest(image=encoded(image), cellpose=parameters), session)
             first = api_predict(payload, session)
-            self.assertEqual(first.summary['training_samples'], 128)
+            self.assertEqual(first.summary['training_samples'], 16)
             self.assertEqual(run.call_count, 1)
             payload.cellpose = parameters.model_copy(update={'flow_threshold': .8})
             second = api_predict(payload, session)
-            self.assertEqual(second.summary['training_samples'], 128)
+            self.assertEqual(second.summary['training_samples'], 16)
             self.assertEqual(run.call_count, 2)
             self.assertEqual(run.call_args.kwargs['parameters'].flow_threshold, .8)
             self.assertEqual(model.parameters.diameter, 15)

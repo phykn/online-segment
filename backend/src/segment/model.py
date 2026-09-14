@@ -35,7 +35,7 @@ class Segmenter:
 
     def configure(self, width, parameters=None):
         parameters = parameters if parameters is not None else self.parameters
-        signature = (width, config.feature.kind, config.feature.components, config.feature.cellpose,
+        signature = (width, config.feature.kind, config.feature.components, config.feature.cellpose, config.feature.texture, config.feature.flow,
                      tuple(config.cellpose.model_dump().items()), tuple(parameters.model_dump().items()))
         if signature != self.signature:
             self.clear()
@@ -53,13 +53,14 @@ class Segmenter:
             if config.feature.cellpose != 'none':
                 _, value = self.run(image, capture=True, progress=progress)
             else:
-                _, _, value = runtime.run(image, capture=True, compute_masks=False, progress=progress or self.report, parameters=self.parameters)
+                _, _, value, _ = runtime.run(image, capture=True, compute_masks=False, progress=progress or self.report, parameters=self.parameters)
                 self.raw.put(key, value)
         return value
 
     def run(self, image, capture, progress=None):
-        masks, logits, tokens = runtime.run(image, capture=capture, progress=progress or self.report, parameters=self.parameters)
-        value = extract_context(image, masks, logits)
+        masks, logits, tokens, endpoints = runtime.run(image, capture=capture, progress=progress or self.report,
+            parameters=self.parameters, flow=config.feature.flow and config.feature.cellpose == 'statistics')
+        value = extract_context(image, masks, logits, endpoints)
         key = self.key(image)
         self.segments.put(key, value)
         if tokens is not None:
@@ -100,7 +101,7 @@ class Segmenter:
             return found
         report = progress or self.report
         report(stage='features', done=0, total=1)
-        local = image_features(image) if config.feature.kind != 'encoder' else None
+        local = image_features(image, config.feature.texture) if config.feature.kind != 'encoder' else None
         tokens = None
         if config.feature.kind != 'image':
             if self.pca is None:

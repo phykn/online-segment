@@ -1,5 +1,7 @@
 # ViT-B 전환과 폴더별 리팩토링
 
+후속 변경: 밀집 표본 추출 제한과 [flow 특징](flow-features.md)을 적용하여 현재 기본 RF 입력은 96채널이다. 아래 94채널 수치와 시간은 당시 기록이다. [표본·feature 정리](rf-sampling.md)도 참고한다.
+
 2026-09-14. 최종 분할은 픽셀 RF가 수행하며 CPDINO는 영역 선택과 특징 추출을 보조한다. 기본 가중치를 `weights/cpdino-vitb.pth`로 바꿨다.
 
 ## 변경 범위

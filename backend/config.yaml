@@ -18,6 +18,8 @@ cellpose:
 feature:
   kind: hybrid
   components: 64
+  texture: false
+  flow: true
   cellpose: statistics
   cache_mb: 256
 export:

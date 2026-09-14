@@ -47,6 +47,27 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual((options['diameter'], options['flow_threshold'], options['cellprob_threshold'], options['min_size']), (15, .7, -1, 3))
         self.assertEqual(config.cellpose.model_dump(), before)
 
+    def test_flow_uses_resampled_outputs_and_cellpose_iteration_count(self):
+        from src.segment.flow import Endpoints
+        runtime = self.model()
+        image = np.zeros((9, 11, 3), np.uint8)
+        vectors = np.ones((2, 9, 11), np.float32)
+        logits = np.ones((9, 11), np.float32)
+        runtime.model.eval.return_value = (np.zeros((9, 11), np.int32), [None, vectors, logits], None)
+        runtime.model.eval.side_effect = None
+        endpoints = Endpoints(np.zeros_like(vectors), logits > 0)
+        with patch('src.segment.runtime.trace', return_value=endpoints) as trace:
+            for diameter, niter in ((None, 200), (15, 100), (60, 400)):
+                result = runtime.run(image, flow=True, parameters=CellposeParameters(diameter=diameter, cellprob_threshold=-1))
+                self.assertIs(result[3], endpoints)
+                self.assertIs(trace.call_args.args[0], vectors)
+                self.assertEqual(trace.call_args.args[2:4], (-1, niter))
+                self.assertTrue(runtime.model.eval.call_args.kwargs['resample'])
+            trace.reset_mock()
+            result = runtime.run(image, flow=False)
+            self.assertIsNone(result[3])
+            trace.assert_not_called()
+
     def test_diameter_expansion_limit_is_checked_before_model_loading(self):
         runtime = CellposeRuntime()
         with patch.object(config.cellpose, 'max_pixels', 100), patch.object(runtime, 'load') as load:

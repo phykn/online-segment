@@ -226,6 +226,7 @@ test('queues the latest width and ignores a stale prediction result', async () =
     const first = model.predict(image, 100)
     running.push(first)
     await started[0].promise
+    assert.equal(model.predictionStatus.value, 'Updating…')
     resizeWidth.value = 200
     const second = model.predict(image, 200)
     running.push(second)
@@ -240,7 +241,11 @@ test('queues the latest width and ignores a stale prediction result', async () =
     assert.equal(predictCalls, 2)
     assert.equal(model.canDownloadResult.value, true)
     assert.notEqual(model.resultImage.value, '')
+    assert.equal(model.predictionStatus.value, 'Up to date')
     assert.equal(browser.rasterUrls.length, 2)
+    resizeWidth.value = 300
+    assert.equal(model.predictionStatus.value, 'Out of date')
+    resizeWidth.value = 200
 
     await model.predict(image, 200)
     assert.equal(predictCalls, 2)

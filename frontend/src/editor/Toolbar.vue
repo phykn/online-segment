@@ -6,7 +6,7 @@ defineProps({
   brushSize: { type: Number, required: true },
   zoom: { type: Number, required: true },
   canReset: { type: Boolean, required: true },
-  predicting: { type: Boolean, default: false },
+  predictionStatus: { type: String, default: '' },
 })
 
 const emit = defineEmits([
@@ -24,14 +24,6 @@ const emit = defineEmits([
       <div class="label-option" role="group" aria-label="Brush labels">
         <span class="label-option__caption">
           Label
-          <span
-            class="editor-toolbar__status"
-            :class="{ 'editor-toolbar__status--active': predicting }"
-            :title="predicting ? 'Processing…' : undefined"
-            role="status"
-          >
-            <span class="visually-hidden">{{ predicting ? 'Processing…' : '' }}</span>
-          </span>
         </span>
         <div class="label-option__buttons">
           <button
@@ -128,6 +120,7 @@ const emit = defineEmits([
           />
         </label>
       </div>
+      <span class="editor-toolbar__status" role="status" aria-live="polite">{{ predictionStatus }}</span>
     </div>
   </section>
 </template>

@@ -1,3 +1,10 @@
+export const instanceAt = (mask, point) => {
+  if (!mask || !point) return 0
+  const x = Math.floor(point.x), y = Math.floor(point.y)
+  if (x < 0 || y < 0 || x >= mask.width || y >= mask.height) return 0
+  return mask.data[y * mask.width + x]
+}
+
 export const decodeInstances = (mask) => {
   const size = mask.width * mask.height
   if (!Number.isSafeInteger(size) || size <= 0 || size > 16777216) throw new Error('Invalid instance mask size.')

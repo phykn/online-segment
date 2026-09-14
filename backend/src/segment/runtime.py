@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from src import ROOT
 from src.config import config, CellposeParameters
 from src.segment.encoder import EncoderCapture
+from src.segment.flow import trace
 
 
 class CellposeRuntime:
@@ -43,7 +44,7 @@ class CellposeRuntime:
         self.signature = signature
         return self.model
 
-    def run(self, image, capture=False, compute_masks=True, progress=lambda **kwargs: None, parameters=None):
+    def run(self, image, capture=False, compute_masks=True, progress=lambda **kwargs: None, parameters=None, flow=False):
         cfg = config.cellpose
         parameters = parameters if parameters is not None else CellposeParameters.defaults()
         scale = 30./parameters.diameter if parameters.diameter is not None else 1.
@@ -63,10 +64,16 @@ class CellposeRuntime:
                     diameter=parameters.diameter, bsize=cfg.tile_size, tile_overlap=cfg.overlap,
                     flow_threshold=parameters.flow_threshold, cellprob_threshold=parameters.cellprob_threshold,
                     min_size=parameters.min_area, augment=False, compute_masks=compute_masks,
+                    resample=True,
                 )
             encoded = encoder.tokens() if capture else None
+            logits = np.asarray(flows[2], np.float32)
+            endpoints = None
+            if flow:
+                endpoints = trace(flows[1], logits, parameters.cellprob_threshold,
+                                  int(200/scale), model.device)
             progress(stage='ready', done=1, total=1)
-            return np.asarray(masks, np.int32), np.asarray(flows[2], np.float32), encoded
+            return np.asarray(masks, np.int32), logits, encoded, endpoints
 
 
 runtime = CellposeRuntime()

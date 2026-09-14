@@ -40,6 +40,14 @@ export const useModel = ({
         revision.value,
       ),
   )
+  const predictionStatus = computed(() => {
+    if (!selectedImage.value) return ''
+    if (predicting.value) return 'Updating…'
+    if (error.value && enabled.value) return 'Update failed'
+    if (!result.value || result.value.image !== selectedImage.value) return ''
+    if (!canDownloadResult.value) return 'Out of date'
+    return result.value.source?.summary?.classifier === 'untrained' ? '' : 'Up to date'
+  })
   const downloads = useDownloads({
     images, selectedImage, resizeWidth, result,
     canDownloadResult, predicting, error,
@@ -200,6 +208,7 @@ export const useModel = ({
   return {
     ...downloads,
     predicting,
+    predictionStatus,
     enabled,
     progress,
     updateEdits,

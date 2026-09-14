@@ -1,15 +1,15 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { ref } from 'vue'
 
 import { filterNewImages, IMAGE_FILE_ACCEPT } from '../images/files'
-import {
-  estimateRemainingSeconds,
-  formatDownloadStatus,
-} from '../model/progress'
 import ImageList from './ImageList.vue'
 import MiniList from './MiniList.vue'
+import BatchExport from './BatchExport.vue'
 
 const props = defineProps({
+  downloadingAll: { type: Boolean, required: true },
+  downloadProgress: { type: Number, required: true },
+  canDownloadAll: { type: Boolean, required: true },
   images: {
     type: Array,
     required: true,
@@ -26,92 +26,25 @@ const props = defineProps({
     type: Boolean,
     required: true,
   },
-  downloadingAll: {
-    type: Boolean,
-    required: true,
-  },
-  downloadProgress: {
-    type: Number,
-    required: true,
-  },
-  canDownloadAll: {
-    type: Boolean,
-    required: true,
-  },
-  modelError: {
-    type: String,
-    default: '',
-  },
 })
 
 const emit = defineEmits([
+  'download-all',
   'add-images',
   'clear-images',
   'remove-image',
   'select-image',
-  'download-all',
 ])
 
 const fileInput = ref(null)
 const isDragging = ref(false)
 const collapsed = ref(false)
-const archiveName = ref('masks')
-const downloadRemainingSeconds = ref(null)
-let downloadStartedAt = 0
-let downloadCountdown = null
-
-const stopDownloadCountdown = () => {
-  if (downloadCountdown !== null) {
-    clearInterval(downloadCountdown)
-    downloadCountdown = null
-  }
-}
-
-const startDownloadCountdown = () => {
-  stopDownloadCountdown()
-  downloadStartedAt = Date.now()
-  downloadRemainingSeconds.value = null
-  downloadCountdown = setInterval(() => {
-    if (downloadRemainingSeconds.value !== null) {
-      downloadRemainingSeconds.value = Math.max(
-        0,
-        downloadRemainingSeconds.value - 1,
-      )
-    }
-  }, 1000)
-}
-
-const downloadStatus = computed(
-  () => formatDownloadStatus(props.downloadProgress, downloadRemainingSeconds.value),
-)
-
-watch(
-  () => [props.downloadingAll, props.downloadProgress],
-  ([downloading, progress], previous = []) => {
-    const [wasDownloading] = previous
-    if (downloading && !wasDownloading) startDownloadCountdown()
-    if (!downloading) {
-      stopDownloadCountdown()
-      downloadRemainingSeconds.value = null
-      return
-    }
-    if (progress > 0) {
-      downloadRemainingSeconds.value = estimateRemainingSeconds(
-        Date.now() - downloadStartedAt,
-        progress,
-      )
-    }
-  },
-  { immediate: true },
-)
-
-onBeforeUnmount(stopDownloadCountdown)
-
 const openFilePicker = () => {
   fileInput.value?.click()
 }
 
 const addFiles = (fileList) => {
+  if (props.busy) return
   const { uniqueFiles } = filterNewImages(fileList, props.images)
 
   if (uniqueFiles.length) {
@@ -135,27 +68,20 @@ const handleDragLeave = (event) => {
   }
 }
 
-const requestDownloadAll = () => {
-  if (props.downloadingAll) {
-    emit('download-all', archiveName.value)
-    return
-  }
-  if (!props.canDownloadAll || props.busy) return
-  emit('download-all', archiveName.value)
-}
 </script>
 
 <template>
   <aside
-    class="sidebar"
+    class="sidebar sidebar--files"
+    aria-label="Images"
     :class="{ 'sidebar--collapsed': collapsed }"
   >
     <button
       v-if="collapsed"
       class="sidebar__open"
       type="button"
-      aria-label="Open sidebar"
-      title="Open sidebar"
+      aria-label="Open images"
+      title="Open images"
       @click="collapsed = false"
     >
       <svg
@@ -191,8 +117,7 @@ const requestDownloadAll = () => {
       @change="handleFileSelect"
     />
 
-    <slot name="settings" :collapse="() => { collapsed = true }" />
-    <div class="sidebar__top-controls">
+    <div class="sidebar__upload-row">
     <button
       class="upload-button"
       :class="{ 'upload-button--dragging': isDragging }"
@@ -217,6 +142,9 @@ const requestDownloadAll = () => {
       </svg>
       <span class="upload-button__title">Add images</span>
     </button>
+    <button class="sidebar__open" type="button" aria-label="Collapse images" title="Collapse images" @click="collapsed = true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+    </button>
     </div>
 
     <ImageList
@@ -229,81 +157,11 @@ const requestDownloadAll = () => {
       @remove="emit('remove-image', $event)"
     />
 
-    <div class="sidebar__footer">
-      <div class="model-actions">
-        <button
-          v-if="images.length > 0"
-          class="model-button"
-          type="button"
-          :disabled="props.busy"
-          @click="emit('clear-images')"
-        >
-          <span>Clear</span>
-        </button>
-        <p v-if="modelError" class="model-error" role="alert">
-          {{ modelError }}
-        </p>
-        <div class="download-all-row">
-          <label class="archive-name">
-            <span class="visually-hidden">ZIP file name</span>
-            <input
-              v-model="archiveName"
-              type="text"
-              maxlength="120"
-              aria-label="ZIP file name"
-              :disabled="props.busy"
-              @keydown.enter.prevent="requestDownloadAll"
-            />
-            <span class="archive-name__suffix">.zip</span>
-          </label>
-          <button
-            class="model-button model-button--download"
-            type="button"
-            :disabled="!downloadingAll && (!canDownloadAll || props.busy)"
-            :aria-label="downloadingAll ? 'Cancel download' : 'Download all'"
-            :title="downloadingAll ? 'Cancel download' : 'Download all'"
-            @click="requestDownloadAll"
-          >
-            <span
-              v-if="downloadingAll"
-              class="model-button__progress"
-              :style="{ width: downloadProgress + '%' }"
-              aria-hidden="true"
-            ></span>
-            <svg
-              v-if="downloadingAll"
-              class="model-button__stop-icon"
-              viewBox="0 0 24 24"
-              aria-hidden="true"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-            >
-              <circle cx="12" cy="12" r="9" />
-              <rect
-                x="8.5" y="8.5" width="7" height="7" rx="0.8"
-                fill="currentColor" stroke="none"
-              />
-            </svg>
-            <span class="model-button__text">
-              {{ downloadingAll ? downloadStatus : 'Download' }}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      <ul class="shortcut-list" aria-label="Canvas controls">
-        <li><kbd>Click</kbd><span>Select region</span></li>
-        <li><kbd>Drag</kbd><span>Paint</span></li>
-        <li><kbd>Shift + drag</kbd><span>Paint anywhere</span></li>
-        <li><kbd>T</kbd><span>Erase</span></li>
-        <li><kbd>Space</kbd><span>Train & predict</span></li>
-        <li><kbd>Ctrl + Z</kbd><span>Undo</span></li>
-        <li><kbd>Ctrl + Shift + Z</kbd><span>Redo</span></li>
-        <li><kbd>Middle drag</kbd><span>Pan</span></li>
-      </ul>
-    </div>
     </template>
-
+    <div v-show="!collapsed" class="sidebar__batch-controls">
+      <BatchExport :busy="busy" :downloading-all="downloadingAll" :download-progress="downloadProgress"
+        :can-download-all="canDownloadAll" @download-all="emit('download-all', $event)" />
+      <button v-if="images.length" class="model-button" type="button" :disabled="busy" @click="emit('clear-images')">Clear images</button>
+    </div>
   </aside>
 </template>

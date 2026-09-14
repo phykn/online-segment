@@ -1,4 +1,10 @@
 import numpy as np
+from scipy.ndimage import label
+
+
+CELL_SIZE = 8
+CELL_LIMIT = 4
+REGION_LIMIT = 256
 
 
 def quotas(counts, total):
@@ -7,27 +13,40 @@ def quotas(counts, total):
     remaining = min(total, int(values.sum()))
     while remaining:
         active = np.flatnonzero(result < values)
-        share = max(1, remaining // len(active))
-        for i in active:
-            added = min(share, int(values[i]-result[i]), remaining)
-            result[i] += added
-            remaining -= added
+        share = remaining // len(active)
+        if not share:
+            selected = ((np.arange(remaining)+.5)*len(active)/remaining).astype(int)
+            result[active[selected]] += 1
+            break
+        added = np.minimum(share, values[active]-result[active])
+        result[active] += added
+        remaining -= int(added.sum())
     return result
 
 
 def spatial(mask, limit):
     flat = np.flatnonzero(mask)
-    if len(flat) <= limit:
+    if not len(flat) or limit <= 0:
+        return flat[:0]
+    groups = label(mask, structure=np.ones((3, 3), bool))[0].ravel()[flat]
+    y, x = np.divmod(flat, mask.shape[1])
+    cells = y//CELL_SIZE*((mask.shape[1]+CELL_SIZE-1)//CELL_SIZE) + x//CELL_SIZE
+    # Fixed coordinate priorities keep surviving examples stable during edits.
+    priority = flat.astype(np.uint64) + np.uint64(0x9E3779B97F4A7C15)
+    priority = (priority ^ (priority >> 30)) * np.uint64(0xBF58476D1CE4E5B9)
+    priority = (priority ^ (priority >> 27)) * np.uint64(0x94D049BB133111EB)
+    priority ^= priority >> 31
+    order = np.lexsort((priority, cells, groups))
+    starts = np.flatnonzero(np.r_[True, (np.diff(groups[order]) != 0) | (np.diff(cells[order]) != 0)])
+    counts = np.diff(np.r_[starts, len(order)])
+    ranks = np.arange(len(order)) - np.repeat(starts, counts)
+    order = order[ranks < CELL_LIMIT]
+    flat, groups = flat[order], groups[order]
+    starts = np.flatnonzero(np.r_[True, np.diff(groups) != 0])
+    counts = np.diff(np.r_[starts, len(flat)])
+    budgets = quotas(np.minimum(counts, REGION_LIMIT), limit)
+    if np.array_equal(budgets, counts):
         return flat
-    y, x = np.unravel_index(flat, mask.shape)
-    side = max(1, int(np.ceil(np.sqrt(limit))))
-    cells = y*side//mask.shape[0]*side + x*side//mask.shape[1]
-    order = np.argsort(cells, kind='stable')
-    starts = np.flatnonzero(np.r_[True, np.diff(cells[order]) != 0])
-    ends = np.r_[starts[1:], len(order)]
-    centers = flat[order[starts+(ends-starts)//2]]
-    if len(centers) >= limit:
-        return centers[((np.arange(limit)+.5)*len(centers)/limit).astype(int)]
-    rest = np.setdiff1d(flat, centers, assume_unique=True)
-    count = limit-len(centers)
-    return np.r_[centers, rest[((np.arange(count)+.5)*len(rest)/count).astype(int)]]
+    ranks = np.arange(budgets.sum()) - np.repeat(np.cumsum(budgets)-budgets, budgets)
+    selected = np.repeat(starts, budgets) + ((ranks+.5)*np.repeat(counts, budgets)/np.repeat(budgets, budgets)).astype(int)
+    return flat[selected]

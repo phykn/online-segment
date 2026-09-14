@@ -37,5 +37,13 @@ export const useProposals = ({ selectedImage, resizeWidth, error, cellpose = ref
       if (request === sequence) error.value = err.message
     } finally { proposing.value = false }
   }
-  return { instances, proposing, propose, reset }
+  const snapshot = image => cache.get(image)?.get(key()) ?? null
+  const restore = (images, regions) => {
+    reset()
+    images.forEach((image, i) => {
+      if (regions[i]) cache.set(image, new Map([[key(), regions[i]]]))
+    })
+    instances.value = snapshot(selectedImage.value)
+  }
+  return { instances, proposing, propose, reset, snapshot, restore }
 }

@@ -11,6 +11,7 @@ It uses a pretrained model to find candidate regions, then trains a Random Fores
 - Lets you label regions or paint pixels with Q, W, E, and R.
 - Learns from your labels and predicts the full image with a pixel Random Forest.
 - Supports undo, redo, uncertain-pixel highlighting, PNG export, and ZIP export.
+- Saves images, training labels, regions and settings in a project file for later editing.
 
 Q, W, E, and R have no built-in meaning. Assign them to any classes that fit your images, including background.
 
@@ -52,6 +53,10 @@ Open <http://localhost:5173>.
 6. Use **Prediction**, **Unclear**, and **Edits** to inspect the result. Use **Download** to save a PNG or all images as a ZIP.
 
 The labels you paint are training examples. The final mask is the Random Forest prediction, so you can keep correcting labels and retraining until the result is useful.
+
+Use **Save project** to keep an editable copy and **Open project** to resume. Save manually before closing the browser; PNG/ZIP downloads contain predictions, not an editable project.
+
+For a shared server, use a single backend worker and read the [deployment review](docs/usability-and-deployment.md). Sessions are isolated, but multiple workers do not share their in-memory state. Images are sent to the machine running the backend.
 
 ## Documentation
 

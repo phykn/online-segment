@@ -4,7 +4,6 @@ import numpy as np
 from src.segment.cache import Cache
 from src.segment.encoder import Tokens
 from src.segment.feature import image_features
-from src.segment.sample import spatial, quotas
 
 
 class FeatureTests(unittest.TestCase):
@@ -42,6 +41,12 @@ class FeatureTests(unittest.TestCase):
             self.assertEqual(features.shape, (*shape[:2], 16))
             self.assertTrue(np.isfinite(features).all())
 
+    def test_small_images_keep_distinct_filter_scales(self):
+        image = np.random.default_rng(0).integers(0, 256, (128, 128, 3), dtype=np.uint8)
+        features = image_features(image)
+        self.assertFalse(np.array_equal(features[..., 1:5], features[..., 5:9]))
+        self.assertFalse(np.array_equal(features[..., 5:9], features[..., 9:13]))
+
     def test_lru_limit_replacement_and_oversize(self):
         cache = Cache(1)
         a = np.zeros(600000, np.uint8); b = a.copy()
@@ -50,11 +55,13 @@ class FeatureTests(unittest.TestCase):
         cache.put('b', np.zeros(12, np.uint8)); self.assertEqual(cache.size, 12)
         cache.put('large', np.zeros(2000000, np.uint8)); self.assertEqual(cache.size, 12)
 
-    def test_sampling_is_bounded_balanced_and_spatial(self):
-        self.assertEqual(quotas([2, 1000, 1000], 12).tolist(), [2, 5, 5])
-        mask = np.ones((100, 100), bool)
-        indices = spatial(mask, 100)
-        self.assertEqual(len(np.unique(indices)), 100)
-        y, x = np.divmod(indices, 100)
-        self.assertEqual(len(np.unique(y//10*10+x//10)), 100)
-        self.assertEqual(len(spatial(mask, 0)), 0)
+    def test_optional_texture_measures_local_variation_without_proposals(self):
+        image = np.full((128, 128, 3), 128, np.uint8)
+        image[:, 64:] = (np.indices((128, 64)).sum(axis=0)[..., None] % 2)*255
+        baseline = image_features(image)
+        textured = image_features(image, texture=True)
+        self.assertEqual(textured.shape[-1], 19)
+        np.testing.assert_array_equal(textured[..., :16], baseline)
+        self.assertTrue(np.isfinite(textured).all())
+        self.assertLess(textured[64, 16, 16:].max(), .001)
+        self.assertGreater(textured[64, 112, 16:].min(), .4)

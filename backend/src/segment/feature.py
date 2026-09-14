@@ -5,15 +5,16 @@ from src.segment.context import Context
 from src.segment.encoder import Tokens
 
 
-def image_features(image):
+def image_features(image, texture=False):
     rgb = image.astype(np.float32) / 255
     gray = rgb @ np.array([.2126, .7152, .0722], np.float32)
     low, high = np.percentile(gray, [1, 99])
     gray = np.clip((gray-low)/(high-low), 0, 1) if high > low else np.zeros_like(gray)
     scale = min(gray.shape) / 512
+    base = np.clip(scale, .5, 8)
     values = [gray]
     for factor in (1., 2., 4.):
-        sigma = np.float32(np.clip(factor * scale, .5, 32))
+        sigma = np.float32(factor * base)
         smooth = gaussian_filter(gray, sigma, mode='reflect')
         values.extend([smooth, np.hypot(sobel(smooth, axis=1), sobel(smooth, axis=0))])
         hxx = gaussian_filter(gray, sigma, order=(0, 2), mode='reflect')
@@ -21,8 +22,16 @@ def image_features(image):
         hyy = gaussian_filter(gray, sigma, order=(2, 0), mode='reflect')
         delta = np.sqrt((hxx-hyy)**2 + 4*hxy**2)
         values.extend([.5*(hxx+hyy+delta), .5*(hxx+hyy-delta)])
-    for factor in (8., 16., 32.):
-        values.append(gray-uniform_filter(gray, size=int(round(factor*scale))*2+1, mode='reflect'))
+    radius = max(1, int(round(8*scale)))
+    textures = []
+    for factor in (1, 2, 4):
+        size = radius*factor*2+1
+        mean = uniform_filter(gray, size=size, mode='reflect')
+        values.append(gray-mean)
+        if texture:
+            variance = uniform_filter(gray*gray, size=size, mode='reflect')-mean*mean
+            textures.append(np.sqrt(np.maximum(variance, 0)))
+    values.extend(textures)
     return np.stack(values, axis=-1).astype(np.float32)
 
 

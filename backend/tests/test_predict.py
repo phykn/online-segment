@@ -21,4 +21,4 @@ class PredictTests(unittest.TestCase):
         self.assertEqual(result[2]['pixel_counts'], [0, 0, 0, 0])
         self.assertEqual(result[2]['area_fractions'], [0, 0, 0, 0])
         self.assertEqual(result[2]['unlabeled_pixels'], 24)
-        self.assertEqual(result[2]['training_samples_by_class'], [6, 0, 0, 0])
+        self.assertEqual(result[2]['training_samples_by_class'], [4, 0, 0, 0])

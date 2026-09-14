@@ -1,14 +1,14 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import { OPACITY, ZOOM } from '../../config.js'
+import { LABELS, OPACITY, ZOOM } from '../../config.js'
 import { useCanvasInput } from './input'
 import { usePainter } from './painter'
 import ResultControls from './ResultControls.vue'
 import { getEditorSize } from './size'
 import { decodeImage } from '../images/decode'
 import { setOriginalImageSize } from '../images/metadata'
-import { resizeInstances } from '../model/instances.js'
+import { instanceAt, resizeInstances } from '../model/instances.js'
 
 const props = defineProps({
   instances: { type: Object, default: null },
@@ -65,6 +65,9 @@ const imageCanvasRef = ref(null)
 const labelCanvasRef = ref(null)
 const resultLabelOutlineCanvasRef = ref(null)
 const proposalCanvasRef = ref(null)
+const previewCanvasRef = ref(null)
+const hoveredPoint = ref(null)
+const shiftHeld = ref(false)
 const rootRef = ref(null)
 const stackRef = ref(null)
 const controlsRef = ref(null)
@@ -80,7 +83,12 @@ const predictionVisible = ref(true)
 const labelPainter = usePainter()
 const editorInstances = computed(() => rendered.value
   ? resizeInstances(props.instances, imageCanvasRef.value?.width, imageCanvasRef.value?.height) : null)
+const hoveredId = computed(() => props.busy || shiftHeld.value ? 0 : instanceAt(editorInstances.value, hoveredPoint.value))
 let renderId = 0
+const previewKey = event => {
+  if (event.key === 'Shift') shiftHeld.value = event.type === 'keydown'
+}
+const clearPreview = () => { hoveredPoint.value = null; shiftHeld.value = false }
 
 const focus = () => {
   const active = document.activeElement
@@ -90,6 +98,9 @@ const focus = () => {
 }
 
 onMounted(() => {
+  window.addEventListener('keydown', previewKey)
+  window.addEventListener('keyup', previewKey)
+  window.addEventListener('blur', clearPreview)
   resizeObserver = new ResizeObserver(() => {
     const root = rootRef.value
     const style = getComputedStyle(root)
@@ -99,7 +110,12 @@ onMounted(() => {
   resizeObserver.observe(rootRef.value)
   resizeObserver.observe(controlsRef.value)
 })
-onBeforeUnmount(() => resizeObserver?.disconnect())
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect()
+  window.removeEventListener('keydown', previewKey)
+  window.removeEventListener('keyup', previewKey)
+  window.removeEventListener('blur', clearPreview)
+})
 
 const resetLabels = (image) => {
   labelPainter.resetForImage(image, labelCanvasRef.value)
@@ -164,6 +180,7 @@ const stampLabel = (point, radius, label) => {
     point,
     radius,
     label,
+    resultLabelOutlineCanvasRef.value,
   )
 }
 
@@ -175,6 +192,7 @@ const paintLabelLine = (from, control, to, radius, label) => {
     to,
     radius,
     label,
+    resultLabelOutlineCanvasRef.value,
   )
 }
 
@@ -222,6 +240,7 @@ const adjustOpacity = (amount) => {
 }
 
 const beginLabelStroke = () => {
+  hoveredPoint.value = null
   labelPainter.beginStroke()
 }
 
@@ -238,6 +257,10 @@ const imageInput = useCanvasInput({
   line: paintLabelLine,
   finish: finishLabelStroke,
   abort: cancelLabelStroke,
+  hover: (point, event) => {
+    hoveredPoint.value = point
+    if (typeof event?.shiftKey === 'boolean') shiftHeld.value = event.shiftKey
+  },
 })
 
 const { canvasTransform, cursorStyle, cursorVisible, panning } = imageInput
@@ -332,6 +355,22 @@ const renderProposals = () => {
 }
 watch(editorInstances, () => nextTick(renderProposals), { immediate: true })
 
+const renderPreview = () => {
+  const canvas = previewCanvasRef.value, mask = editorInstances.value
+  if (!canvas) return
+  canvas.width = mask?.width ?? 0
+  canvas.height = mask?.height ?? 0
+  if (!mask || !hoveredId.value) return
+  const context = canvas.getContext('2d')
+  const pixels = context.createImageData(mask.width, mask.height)
+  const color = [...(LABELS[props.selectedLabel]?.rgba.slice(0, 3) ?? [255, 255, 255]), 70]
+  for (let i = 0; i < mask.data.length; i += 1) {
+    if (mask.data[i] === hoveredId.value) pixels.data.set(color, i * 4)
+  }
+  context.putImageData(pixels, 0, 0)
+}
+watch([editorInstances, hoveredId, () => props.selectedLabel], () => nextTick(renderPreview), { immediate: true })
+
 defineExpose({
   focus,
   resetLabels,
@@ -381,12 +420,16 @@ defineExpose({
               draggable="false"
               alt="Prediction mask over the original image"
             />
-            <canvas
-              ref="proposalCanvasRef"
-              v-show="instances"
-              class="workspace__region-outlines"
-              aria-hidden="true"
-            ></canvas>
+            <img
+              v-if="resultImage && uncertaintyImage"
+              v-show="uncertaintyVisible"
+              class="workspace__uncertainty"
+              :src="uncertaintyImage"
+              :style="{ opacity: resultOpacity * 0.35 }"
+              draggable="false"
+              alt="Unclear prediction areas"
+            />
+            <canvas ref="previewCanvasRef" class="workspace__region-preview" aria-hidden="true"></canvas>
             <canvas
               v-show="labelsVisible && resultImage"
               ref="resultLabelOutlineCanvasRef"
@@ -399,14 +442,12 @@ defineExpose({
               class="workspace__labels"
               :aria-label="image ? image.name + ' labels' : undefined"
             ></canvas>
-            <img
-              v-if="resultImage && uncertaintyImage"
-              v-show="uncertaintyVisible"
-              class="workspace__uncertainty"
-              :src="uncertaintyImage"
-              draggable="false"
-              alt="Unclear prediction areas"
-            />
+            <canvas
+              ref="proposalCanvasRef"
+              v-show="instances"
+              class="workspace__region-outlines"
+              aria-hidden="true"
+            ></canvas>
             <span
               v-show="cursorVisible"
               class="workspace__brush-cursor"
