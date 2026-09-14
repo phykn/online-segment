@@ -20,6 +20,8 @@ frontend/.vite/
 .env.*
 !.env.example
 *.bat
+!/backend-dev.bat
+!/frontend-dev.bat
 /DESIGN.md
 
 # Test data

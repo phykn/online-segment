@@ -2,6 +2,15 @@ import { EXPORT } from '../../config.js'
 import { API_URL, readError } from './http.js'
 import { sessionFetch } from './session.js'
 
+export const exportPair = async (image, mask) => {
+  const body = new FormData()
+  body.append('file', image, image.name)
+  body.append('mask', JSON.stringify(mask))
+  const response = await fetch(`${API_URL}/export/pair`, { method: 'POST', body })
+  if (!response.ok) throw new Error(await readError(response, 'Could not export the image and mask.'))
+  return response.blob()
+}
+
 export const exportMask = async (mask, width, height) => {
   const response = await fetch(`${API_URL}/export`, {
     method: 'POST',

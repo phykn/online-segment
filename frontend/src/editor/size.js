@@ -7,7 +7,7 @@ export const getEditorSize = (
 ) => {
   const outputWidth = targetWidth == null
     ? sourceWidth
-    : Math.max(1, Math.round(targetWidth))
+    : Math.min(sourceWidth, Math.max(1, Math.round(targetWidth)))
   const outputHeight = targetWidth == null
     ? sourceHeight
     : Math.max(1, Math.round((sourceHeight / sourceWidth) * outputWidth))

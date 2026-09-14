@@ -20,7 +20,7 @@ const setup = () => {
   return { downloads, error, mask }
 }
 
-test('downloads the current mask at its original size and releases busy state', async () => {
+test('downloads the original image and current mask as a pair and releases busy state', async () => {
   const originalFetch = globalThis.fetch
   const originalDocument = globalThis.document
   const { downloads, error, mask } = setup()
@@ -33,14 +33,16 @@ test('downloads the current mask at its original size and releases busy state', 
     }),
   }
   globalThis.fetch = async (url, options) => {
-    assert.equal(url, '/api/export')
+    assert.equal(url, '/api/export/pair')
     assert.equal(downloads.downloading.value, true)
-    assert.deepEqual(JSON.parse(options.body), { mask, width: 750, height: 748 })
+    assert.deepEqual(JSON.parse(options.body.get('mask')), mask)
+    assert.equal(options.body.get('file').name, 'sample.tiff')
+    assert.equal(await options.body.get('file').text(), 'image')
     return new Response(new Blob(['png']))
   }
   try {
     await downloads.downloadResult()
-    assert.deepEqual(saved, ['sample.png'])
+    assert.deepEqual(saved, ['sample.zip'])
     assert.equal(downloads.downloading.value, false)
     assert.equal(error.value, '')
     globalThis.fetch = async () => Response.json({ detail: 'export failed' }, { status: 500 })

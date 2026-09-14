@@ -80,7 +80,7 @@ const makeModel = (image, width = 100, cellpose = ref(null)) => {
   }
 }
 
-test('runs without training labels and invalidates display cache for edits', async () => {
+test('edits preserve the displayed prediction and wait for Space to train again', async () => {
   resetSession()
   const browser = installBrowserMocks()
   const originalFetch = globalThis.fetch
@@ -96,15 +96,24 @@ test('runs without training labels and invalidates display cache for edits', asy
   try {
     await model.apply()
     assert.equal(requests.length,1)
+    assert.equal(model.predictionVersion.value, 1)
+    assert.deepEqual([...model.uncertaintyMask.value.data], [0])
     assert.equal(requests[0].edits,null)
     assert.equal(requests[0].diameter,undefined)
     assert.equal(requests[0].width,100)
     assert.equal(atob(requests[0].image),'image')
     await model.predict()
     assert.equal(requests.length,1)
+    assert.equal(model.predictionVersion.value, 2)
     const mask = ensureLabelMask(image,10,5)
     mask.data[0]=3;mask.labeledCount=1
+    const previousResult = model.resultImage.value
     await model.updateEdits(image)
+    assert.equal(requests.length, 1)
+    assert.equal(model.predicting.value, false)
+    assert.equal(model.canDownloadResult.value, false)
+    assert.equal(model.resultImage.value, previousResult)
+    await model.apply()
     assert.equal(requests.length,2)
     assert.deepEqual(requests[1].edits.runs[0],[3,1])
     assert.equal(requests[1].training.length, 1)
@@ -161,12 +170,17 @@ test('training edits invalidate other images and removed labels disappear from t
     selectedImage.value = a
     mask.data[0] = 2
     await model.updateEdits(a)
+    assert.equal(requests.length, 2)
+    await model.apply()
     selectedImage.value = b
     await model.predict()
     assert.equal(requests.length, 4)
     assert.deepEqual(requests[3].training[0].edits.runs[0], [2, 1])
     images.value = [b]
     await model.updateEdits(a)
+    assert.equal(requests.length, 4)
+    assert.equal(model.canDownloadResult.value, false)
+    await model.apply()
     assert.deepEqual(requests.at(-1).training, [])
     assert.equal(model.canDownloadResult.value, true)
   } finally { globalThis.fetch = originalFetch; browser.restore(); resetSession() }
@@ -226,7 +240,7 @@ test('queues the latest width and ignores a stale prediction result', async () =
     const first = model.predict(image, 100)
     running.push(first)
     await started[0].promise
-    assert.equal(model.predictionStatus.value, 'Updating…')
+    assert.equal(model.predicting.value, true)
     resizeWidth.value = 200
     const second = model.predict(image, 200)
     running.push(second)
@@ -241,10 +255,10 @@ test('queues the latest width and ignores a stale prediction result', async () =
     assert.equal(predictCalls, 2)
     assert.equal(model.canDownloadResult.value, true)
     assert.notEqual(model.resultImage.value, '')
-    assert.equal(model.predictionStatus.value, 'Up to date')
+    assert.equal(model.predicting.value, false)
     assert.equal(browser.rasterUrls.length, 2)
     resizeWidth.value = 300
-    assert.equal(model.predictionStatus.value, 'Out of date')
+    assert.equal(model.canDownloadResult.value, false)
     resizeWidth.value = 200
 
     await model.predict(image, 200)
@@ -314,7 +328,7 @@ test('does not expose an error from a superseded prediction', async () => {
   }
 })
 
-test('brush edits during the first prediction queue the latest labels instead of losing the result', async () => {
+test('edits during prediction discard the stale response without automatically training again', async () => {
   resetSession()
   const browser = installBrowserMocks(), originalFetch = globalThis.fetch
   const first = deferred(), started = deferred(), requests = []
@@ -334,6 +348,11 @@ test('brush edits during the first prediction queue the latest labels instead of
     const update = model.updateEdits(image)
     first.resolve(Response.json(prediction(0)))
     await Promise.all([running, update])
+    assert.equal(requests.length, 1)
+    assert.equal(model.predicting.value, false)
+    assert.equal(model.resultImage.value, '')
+    assert.equal(model.canDownloadResult.value, false)
+    await model.apply()
     assert.equal(requests.length, 2)
     assert.deepEqual(requests[1].training[0].edits.runs[0], [2,1])
     assert.equal(model.enabled.value, true)

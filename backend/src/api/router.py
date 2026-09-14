@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from src.api import export, model
+from src.api import export, image, model
 from src.api.schema import SessionResponse
 from src.session import sessions
 
@@ -20,3 +20,4 @@ def create_session() -> SessionResponse:
 
 router.include_router(model.router)
 router.include_router(export.router)
+router.include_router(image.router)

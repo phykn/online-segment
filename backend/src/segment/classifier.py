@@ -1,10 +1,12 @@
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from src.segment.cuda_forest import make_predictor
 
 
 class Classifier:
     def __init__(self):
         self.model = None
+        self.cuda = None
         self.count = 0
         self.counts = [0]*4
         self.classes = []
@@ -21,6 +23,7 @@ class Classifier:
                 random_state=0, n_jobs=-1)
             model.fit(np.concatenate([x for x, _ in selected]), np.concatenate([y for _, y in selected]))
         self.model = model
+        self.cuda = make_predictor(model) if model is not None else None
 
     def predict(self, features, progress=lambda **kwargs: None):
         size = int(np.prod(features.shape))
@@ -30,7 +33,11 @@ class Classifier:
             for start in range(0, size, 65536):
                 end = min(size, start+65536)
                 progress(stage='predicting', done=start, total=size)
-                probs = self.model.predict_proba(features.pixels(np.arange(start, end)))
+                values = features.pixels(np.arange(start, end))
+                probs = self.cuda.predict_proba(values) if self.cuda is not None else None
+                if probs is None:
+                    self.cuda = None
+                    probs = self.model.predict_proba(values)
                 labels[start:end] = self.model.classes_[probs.argmax(axis=1)]
                 unclear[start:end] = probs.max(axis=1) < .7
         return labels.reshape(features.shape), unclear.reshape(features.shape)

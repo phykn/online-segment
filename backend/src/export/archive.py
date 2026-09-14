@@ -59,3 +59,23 @@ def unique_png_name(name: str, used: set[str]) -> str:
         number += 1
     used.add(value.lower())
     return value
+
+
+def append_pair(archive: ZipFile, name: str, image: np.ndarray, mask: np.ndarray) -> None:
+    stem = Path(Path(name.replace('\\', '/')).name).stem or 'image'
+    used = {value.lower() for value in archive.namelist()}
+    base, number = stem, 2
+    while any(f'{base}_{kind}.png'.lower() in used for kind in ('image', 'mask')):
+        base = f'{stem}_{number}'
+        number += 1
+    output = BytesIO()
+    Image.fromarray(image).save(output, format='PNG', compress_level=config.export.png_compress_level)
+    archive.writestr(f'{base}_image.png', output.getvalue())
+    archive.writestr(f'{base}_mask.png', make_png(mask, image.shape[1], image.shape[0]))
+
+
+def make_pair_archive(name: str, image: np.ndarray, mask: np.ndarray) -> bytes:
+    output = BytesIO()
+    with ZipFile(output, 'w', ZIP_STORED) as archive:
+        append_pair(archive, name, image, mask)
+    return output.getvalue()

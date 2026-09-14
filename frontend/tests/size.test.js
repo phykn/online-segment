@@ -3,6 +3,12 @@ import test from 'node:test'
 
 import { getEditorSize } from '../src/editor/size.js'
 
+test('768 working width shrinks large images without enlarging small images', () => {
+  assert.deepEqual(getEditorSize(1600, 1200, 768), { width: 768, height: 576 })
+  assert.deepEqual(getEditorSize(640, 480, 768), { width: 640, height: 480 })
+  assert.deepEqual(getEditorSize(768, 512, 768), { width: 768, height: 512 })
+})
+
 test('caps an original-size editor canvas without changing its aspect ratio', () => {
   assert.deepEqual(getEditorSize(10000, 6000), {
     width: 2048,

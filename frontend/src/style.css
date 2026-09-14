@@ -81,13 +81,6 @@ button {
   gap: 6px;
 }
 
-.editor-toolbar__status {
-  align-self: center;
-  min-width: 80px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .workspace {
   display: flex;
   flex: 1;
@@ -960,6 +953,8 @@ button {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition: none !important;
+  }
+  *:not(.workspace__spinner), *::before, *::after {
     animation: none !important;
   }
 }

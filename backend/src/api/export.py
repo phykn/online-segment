@@ -6,11 +6,23 @@ from starlette.responses import FileResponse
 from src.api.dependencies import SessionDep
 from src.api.schema import ExportArchiveRequest, ExportJobRequest, ExportRequest, Mask
 from src.data.mask import decode
+from src.data.image import read_bytes
 from src.export import archive, pipeline
 from src.export.jobs import jobs
 
 
 router = APIRouter(prefix="/export", tags=["export"])
+
+
+@router.post('/pair')
+def export_pair(file: UploadFile = File(), mask: str = Form()) -> Response:
+    try:
+        labels = Mask.model_validate_json(mask)
+    except ValidationError as error:
+        raise HTTPException(422, 'invalid mask.') from error
+    content = archive.make_pair_archive(file.filename or 'image',
+        read_bytes(file.file.read()), decode(labels))
+    return Response(content=content, media_type='application/zip')
 
 
 @router.post("")

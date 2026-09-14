@@ -190,6 +190,7 @@ export const usePainter = () => {
   let strokeImage = null
   let strokeAllows = null
   let pendingOperations = []
+  let previewMask = null
 
   const getCurrentMask = () =>
     currentImage ? getLabelMask(currentImage) : null
@@ -227,6 +228,8 @@ export const usePainter = () => {
     strokeImage = currentImage
     strokeAllows = allows
     pendingOperations = []
+    const mask = getCurrentMask()
+    previewMask = allows && mask ? { ...mask, data: mask.data.slice() } : null
   }
 
   const commitStroke = () => {
@@ -257,7 +260,10 @@ export const usePainter = () => {
         const { instances, id, label } = operation
         if (instances.width !== mask.width || instances.height !== mask.height) continue
         for (let i = 0; i < mask.data.length; i += 1) {
-          if (instances.data[i] === id) changed = setLabel(mask, i, label, changes) || changed
+          if (instances.data[i] === id && (!allows || allows(i % mask.width,
+            Math.floor(i / mask.width), mask.width, mask.height))) {
+            changed = setLabel(mask, i, label, changes) || changed
+          }
         }
       } else {
         changed =
@@ -326,8 +332,7 @@ export const usePainter = () => {
     return true
   }
 
-  const render = (canvas, opaque = false) => {
-    const mask = getCurrentMask()
+  const render = (canvas, opaque = false, mask = getCurrentMask()) => {
     if (!canvas || !mask) return
 
     const context = canvas.getContext('2d')
@@ -376,8 +381,14 @@ export const usePainter = () => {
     const mask = getCurrentMask()
     if (!canvas || !mask) return
 
-    drawStamp(canvas, point, radius, label)
-    drawStamp(mirrorCanvas, point, radius, label, true)
+    if (previewMask) {
+      paintMaskLine(previewMask, point, point, radius, label, strokeAllows)
+      render(canvas, false, previewMask)
+      render(mirrorCanvas, true, previewMask)
+    } else {
+      drawStamp(canvas, point, radius, label)
+      drawStamp(mirrorCanvas, point, radius, label, true)
+    }
     pendingOperations.push({ type: 'stamp', point, radius, label })
   }
 
@@ -393,8 +404,14 @@ export const usePainter = () => {
     const mask = getCurrentMask()
     if (!canvas || !mask) return
 
-    drawCurve(canvas, from, control, to, radius, label)
-    drawCurve(mirrorCanvas, from, control, to, radius, label, true)
+    if (previewMask) {
+      paintMaskCurve(previewMask, from, control, to, radius, label, strokeAllows)
+      render(canvas, false, previewMask)
+      render(mirrorCanvas, true, previewMask)
+    } else {
+      drawCurve(canvas, from, control, to, radius, label)
+      drawCurve(mirrorCanvas, from, control, to, radius, label, true)
+    }
     pendingOperations.push({
       type: 'curve',
       from,

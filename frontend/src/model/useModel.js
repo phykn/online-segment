@@ -5,6 +5,7 @@ import { makeResult } from '../output/raster.js'
 import { encodeModelImage, makeEdits, makeTraining } from './input.js'
 import { isCurrent, ResultCache } from './results.js'
 import { useDownloads } from './useDownloads.js'
+import { decodeMask } from './masks.js'
 
 export const useModel = ({
   images,
@@ -21,6 +22,9 @@ export const useModel = ({
   const revision = ref(0)
   const error = ref('')
   const result = ref(null)
+  const predictionVersion = ref(0)
+  const uncertaintyMask = computed(() => result.value?.image === selectedImage.value
+    && result.value.source?.uncertain ? decodeMask(result.value.source.uncertain) : null)
   const results = new ResultCache()
 
   const resultImage = computed(() =>
@@ -40,14 +44,6 @@ export const useModel = ({
         revision.value,
       ),
   )
-  const predictionStatus = computed(() => {
-    if (!selectedImage.value) return ''
-    if (predicting.value) return 'Updating…'
-    if (error.value && enabled.value) return 'Update failed'
-    if (!result.value || result.value.image !== selectedImage.value) return ''
-    if (!canDownloadResult.value) return 'Out of date'
-    return result.value.source?.summary?.classifier === 'untrained' ? '' : 'Up to date'
-  })
   const downloads = useDownloads({
     images, selectedImage, resizeWidth, result,
     canDownloadResult, predicting, error,
@@ -127,7 +123,10 @@ export const useModel = ({
         request.revision,
       )
       if (cached) {
-        if (isPredictionCurrent(request)) result.value = cached
+        if (isPredictionCurrent(request)) {
+          result.value = cached
+          predictionVersion.value += 1
+        }
         return
       }
 
@@ -151,6 +150,7 @@ export const useModel = ({
         request.revision,
         response,
       )
+      predictionVersion.value += 1
     } catch (err) {
       if (isPredictionCurrent(request)) error.value = err.message
     }
@@ -201,20 +201,19 @@ export const useModel = ({
 
   const updateEdits = () => {
     updateRevision()
-    if ((enabled.value || predicting.value) && selectedImage.value) return predict()
-    return Promise.resolve()
   }
 
   return {
     ...downloads,
     predicting,
-    predictionStatus,
     enabled,
     progress,
     updateEdits,
     error,
     resultImage,
     uncertaintyImage,
+    uncertaintyMask,
+    predictionVersion,
     canDownloadResult,
     busy,
     clearError,

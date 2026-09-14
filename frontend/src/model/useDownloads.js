@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 
-import { exportAll, exportMask } from '../api/export.js'
+import { exportAll, exportPair } from '../api/export.js'
 import { getOriginalImageSize } from '../images/metadata.js'
 import { pngName, saveBlob, zipName } from '../output/download.js'
 import { makeEdits } from './input.js'
@@ -34,8 +34,8 @@ export const useDownloads = ({
     downloading.value = true
     error.value = ''
     try {
-      const blob = await exportMask(current.mask, size.width, size.height)
-      saveBlob(blob, pngName(image))
+      const blob = await exportPair(image, current.mask)
+      saveBlob(blob, zipName(pngName(image).replace(/\.png$/i, '')))
     } catch (err) {
       error.value = err.message
     } finally {

@@ -8,6 +8,11 @@ from src.data.image import read_bytes, resize_width
 
 
 class ImageTests(unittest.TestCase):
+    def test_default_working_width_does_not_enlarge_small_images(self):
+        image = np.zeros((480, 640, 3), np.uint8)
+        self.assertIs(resize_width(image, 768), image)
+        self.assertEqual(resize_width(np.zeros((1200, 1600, 3), np.uint8), 768).shape, (576, 768, 3))
+
     def test_read_bytes_applies_exif_orientation(self) -> None:
         source = Image.new("RGB", (2, 3))
         exif = Image.Exif()

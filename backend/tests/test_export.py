@@ -11,12 +11,25 @@ from zipfile import ZipFile
 import numpy as np
 from PIL import Image
 
-from src.export.archive import make_mask_archive, make_png
+from src.export.archive import make_mask_archive, make_png, make_pair_archive
 from src.export.jobs import JobStore
 from src.export.pipeline import append_archive_batch
 
 
 class ExportTests(unittest.TestCase):
+    def test_pair_has_flat_names_original_pixels_and_indexed_labels(self):
+        original = np.arange(24, dtype=np.uint8).reshape(2, 4, 3)
+        mask = np.array([[-1, 3]], np.int8)
+        content = make_pair_archive('folder\\sample.tiff', original, mask)
+        with ZipFile(BytesIO(content)) as archive:
+            self.assertEqual(archive.namelist(), ['sample_image.png', 'sample_mask.png'])
+            with Image.open(BytesIO(archive.read('sample_image.png'))) as im:
+                np.testing.assert_array_equal(np.asarray(im), original)
+            with Image.open(BytesIO(archive.read('sample_mask.png'))) as im:
+                self.assertEqual(im.size, (4, 2))
+                self.assertEqual(im.mode, 'P')
+                np.testing.assert_array_equal(np.asarray(im), [[255, 255, 3, 3]] * 2)
+
     def test_ignore_label_is_saved_as_255(self) -> None:
         mask = np.array([[-1, 0], [1, 2]], dtype=np.int8)
 
@@ -79,8 +92,13 @@ class ExportTests(unittest.TestCase):
             np.testing.assert_array_equal(run.call_args_list[0].args[4],[[-1,3]])
             self.assertIsNone(run.call_args_list[1].args[4])
             with ZipFile(store.path(job,'a')) as archive:
-                self.assertEqual(archive.namelist(),['same.png','same_2.png'])
-                with Image.open(BytesIO(archive.read('same.png'))) as im:
+                self.assertEqual(archive.namelist(),['same_image.png','same_mask.png','same_2_image.png','same_2_mask.png'])
+                for index, color in enumerate((0, 255)):
+                    name = 'same' if index == 0 else 'same_2'
+                    with Image.open(BytesIO(archive.read(f'{name}_image.png'))) as im:
+                        self.assertEqual(im.size, (4, 2))
+                        self.assertEqual(im.getpixel((0, 0)), (color, color, color))
+                with Image.open(BytesIO(archive.read('same_mask.png'))) as im:
                     self.assertEqual(im.size,(4,2))
                     self.assertEqual(list(im.get_flattened_data()),[0,0,3,3,0,0,3,3])
 

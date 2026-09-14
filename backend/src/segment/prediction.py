@@ -25,6 +25,7 @@ def infer(image, segmenter, diameter=None, original_width=None, edits=None, prog
             unlabeled_pixels=int(np.count_nonzero(labels < 0)), training_samples=classifier.count,
             training_samples_by_class=classifier.counts,
             classes=classifier.classes, classifier='rf' if classifier.model is not None else 'untrained',
+            device='cuda' if classifier.cuda is not None else 'cpu',
             message=message)
         report(stage='ready', done=1, total=1)
         return labels, uncertain, summary, []

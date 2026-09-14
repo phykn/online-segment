@@ -9,8 +9,16 @@ import { getEditorSize } from './size'
 import { decodeImage } from '../images/decode'
 import { setOriginalImageSize } from '../images/metadata'
 import { instanceAt, resizeInstances } from '../model/instances.js'
+import { allowsUnclear } from './uncertainty.js'
+import CropOverlay from '../images/CropOverlay.vue'
 
 const props = defineProps({
+  cropping: { type: Boolean, default: false },
+  cropSource: { type: File, default: null },
+  cropBounds: { type: Object, default: null },
+  processing: { type: Boolean, default: false },
+  predictionVersion: { type: Number, default: 0 },
+  uncertaintyMask: { type: Object, default: null },
   instances: { type: Object, default: null },
   image: {
     type: File,
@@ -55,6 +63,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
+  'crop-selection',
+  'image-size',
   'download',
   'label-state-change',
   'update:brush-size',
@@ -74,16 +84,19 @@ const controlsRef = ref(null)
 const canvasHeight = ref(null)
 let resizeObserver = null
 const rendered = ref(false)
+const sourceSize = ref(null)
 const errorMessage = ref('')
 const resultOpacity = ref(OPACITY.default)
 const labelsVisible = ref(true)
 const uncertaintyVisible = ref(false)
 const predictionVisible = ref(true)
+const editAllows = computed(() => uncertaintyVisible.value ? allowsUnclear(props.uncertaintyMask) : null)
+watch(() => props.predictionVersion, () => { predictionVisible.value = true })
 
 const labelPainter = usePainter()
 const editorInstances = computed(() => rendered.value
   ? resizeInstances(props.instances, imageCanvasRef.value?.width, imageCanvasRef.value?.height) : null)
-const hoveredId = computed(() => props.busy || shiftHeld.value ? 0 : instanceAt(editorInstances.value, hoveredPoint.value))
+const hoveredId = computed(() => props.busy || props.cropping || shiftHeld.value ? 0 : instanceAt(editorInstances.value, hoveredPoint.value))
 let renderId = 0
 const previewKey = event => {
   if (event.key === 'Shift') shiftHeld.value = event.type === 'keydown'
@@ -118,6 +131,7 @@ onBeforeUnmount(() => {
 })
 
 const resetLabels = (image) => {
+  if (props.cropping) return
   labelPainter.resetForImage(image, labelCanvasRef.value)
   renderLabels()
   emit('label-state-change', {
@@ -169,9 +183,11 @@ const drawResized = (source, sourceWidth, sourceHeight, file) => {
   context.imageSmoothingQuality = 'high'
   context.drawImage(source, 0, 0, width, height)
 
-  labelPainter.prepare(file, width, height)
-  renderLabels()
-  emitLabelState()
+  if (!props.cropping) {
+    labelPainter.prepare(file, width, height)
+    renderLabels()
+    emitLabelState()
+  }
 }
 
 const stampLabel = (point, radius, label) => {
@@ -213,7 +229,7 @@ const renderLabels = () => {
 }
 
 const changeHistory = (action) => {
-  if (props.busy || !action()) return
+  if (props.busy || props.cropping || !action()) return
 
   renderLabels()
   emitLabelState(true, true)
@@ -241,7 +257,8 @@ const adjustOpacity = (amount) => {
 
 const beginLabelStroke = () => {
   hoveredPoint.value = null
-  labelPainter.beginStroke()
+  labelsVisible.value = true
+  labelPainter.beginStroke(editAllows.value)
 }
 
 const imageInput = useCanvasInput({
@@ -250,7 +267,7 @@ const imageInput = useCanvasInput({
   setBrushSize: (size) => emit('update:brush-size', size),
   updateZoom: (zoom) => emit('update:zoom', zoom),
   getLabel: () => props.selectedLabel,
-  canEdit: () => rendered.value && !props.busy && labelPainter.isReady(),
+  canEdit: () => rendered.value && !props.busy && !props.cropping && labelPainter.isReady(),
   start: beginLabelStroke,
   selectRegion: (point, label) => labelPainter.fillInstance(editorInstances.value, point, label),
   stamp: stampLabel,
@@ -266,10 +283,13 @@ const imageInput = useCanvasInput({
 const { canvasTransform, cursorStyle, cursorVisible, panning } = imageInput
 
 watch(
-  [() => props.image, () => props.targetWidth],
+  [() => props.image, () => props.targetWidth, () => props.cropping, () => props.cropSource],
   async ([file]) => {
+    if (props.cropping) file = props.cropSource
     const currentRenderId = ++renderId
     rendered.value = false
+    emit('crop-selection', null)
+    if (props.cropping) uncertaintyVisible.value = false
     errorMessage.value = ''
     imageInput.reset()
     if (props.zoom !== ZOOM.default) emit('update:zoom', ZOOM.default)
@@ -296,6 +316,8 @@ watch(
       if (currentRenderId !== renderId) return
 
       setOriginalImageSize(file, decodedImage.width, decodedImage.height)
+      sourceSize.value = { width: decodedImage.width, height: decodedImage.height }
+      if (!props.cropping) emit('image-size', sourceSize.value)
       drawResized(
         decodedImage.source,
         decodedImage.width,
@@ -365,11 +387,12 @@ const renderPreview = () => {
   const pixels = context.createImageData(mask.width, mask.height)
   const color = [...(LABELS[props.selectedLabel]?.rgba.slice(0, 3) ?? [255, 255, 255]), 70]
   for (let i = 0; i < mask.data.length; i += 1) {
-    if (mask.data[i] === hoveredId.value) pixels.data.set(color, i * 4)
+    if (mask.data[i] === hoveredId.value && (!editAllows.value ||
+      editAllows.value(i % mask.width, Math.floor(i / mask.width), mask.width, mask.height))) pixels.data.set(color, i * 4)
   }
   context.putImageData(pixels, 0, 0)
 }
-watch([editorInstances, hoveredId, () => props.selectedLabel], () => nextTick(renderPreview), { immediate: true })
+watch([editorInstances, hoveredId, editAllows, () => props.selectedLabel], () => nextTick(renderPreview), { immediate: true })
 
 defineExpose({
   focus,
@@ -389,6 +412,13 @@ defineExpose({
     <div class="workspace__content">
       <div v-show="image && rendered" class="workspace__editor">
         <div class="canvas-viewport">
+          <div v-if="processing" class="workspace__processing" role="status" aria-live="polite">
+            <span class="workspace__spinner" aria-hidden="true"></span>
+            Processing…
+          </div>
+          <div v-else-if="uncertaintyVisible && !cropping" class="workspace__edit-scope">
+            {{ uncertaintyMask ? 'Labeling unclear areas only' : 'Run prediction to label unclear areas' }}
+          </div>
           <div
             ref="stackRef"
             class="canvas-stack"
@@ -412,7 +442,7 @@ defineExpose({
               :aria-label="image?.name"
             ></canvas>
             <img
-              v-if="resultImage"
+              v-if="resultImage && !cropping"
               v-show="predictionVisible"
               class="workspace__mask"
               :src="resultImage"
@@ -421,7 +451,7 @@ defineExpose({
               alt="Prediction mask over the original image"
             />
             <img
-              v-if="resultImage && uncertaintyImage"
+              v-if="resultImage && uncertaintyImage && !cropping"
               v-show="uncertaintyVisible"
               class="workspace__uncertainty"
               :src="uncertaintyImage"
@@ -431,33 +461,35 @@ defineExpose({
             />
             <canvas ref="previewCanvasRef" class="workspace__region-preview" aria-hidden="true"></canvas>
             <canvas
-              v-show="labelsVisible && resultImage"
+              v-show="labelsVisible && resultImage && !cropping"
               ref="resultLabelOutlineCanvasRef"
               class="workspace__result-label-outline"
               aria-hidden="true"
             ></canvas>
             <canvas
-              v-show="labelsVisible"
+              v-show="labelsVisible && !cropping"
               ref="labelCanvasRef"
               class="workspace__labels"
               :aria-label="image ? image.name + ' labels' : undefined"
             ></canvas>
             <canvas
               ref="proposalCanvasRef"
-              v-show="instances"
+              v-show="instances && !cropping"
               class="workspace__region-outlines"
               aria-hidden="true"
             ></canvas>
             <span
-              v-show="cursorVisible"
+              v-show="cursorVisible && !cropping"
               class="workspace__brush-cursor"
               :style="cursorStyle"
               aria-hidden="true"
             ></span>
+            <CropOverlay v-if="cropping && rendered && sourceSize" :width="sourceSize.width" :height="sourceSize.height"
+              :bounds="cropBounds" :busy="busy" @change="emit('crop-selection', $event)" />
           </div>
         </div>
         <div ref="controlsRef" class="workspace__controls">
-        <ResultControls
+        <ResultControls v-show="!cropping"
           v-model:prediction="predictionVisible"
           v-model:unclear="uncertaintyVisible"
           v-model:edits="labelsVisible"
@@ -478,3 +510,19 @@ defineExpose({
     </div>
   </section>
 </template>
+
+<style scoped>
+.canvas-viewport { position: relative; }
+.workspace__processing, .workspace__edit-scope {
+  position: absolute; top: 12px; left: 12px; z-index: 10; pointer-events: none;
+  display: flex; align-items: center; gap: 9px; padding: 10px 14px;
+  border-radius: 8px; background: #172b46; color: #fff; font-size: 14px;
+  box-shadow: 0 2px 10px #0005;
+}
+.workspace__edit-scope { font-size: 12px; padding: 7px 10px; }
+.workspace__spinner {
+  width: 20px; height: 20px; border: 3px solid #ffffff50; border-top-color: #fff;
+  border-radius: 50%; animation: processing-spin .8s linear infinite;
+}
+@keyframes processing-spin { to { transform: rotate(360deg); } }
+</style>

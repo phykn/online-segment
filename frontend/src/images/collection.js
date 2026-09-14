@@ -1,13 +1,35 @@
 import { computed, ref } from 'vue'
+import { hasImageLabels } from '../editor/masks.js'
 
 export const useImages = () => {
   const images = ref([])
   const selectedIndex = ref(-1)
   const labeledImages = ref(new Set())
+  const crops = new WeakMap()
 
   const selectedImage = computed(
     () => images.value[selectedIndex.value] ?? null,
   )
+  const cropSource = computed(() => crops.get(selectedImage.value)?.source ?? selectedImage.value)
+  const cropBounds = computed(() => crops.get(selectedImage.value)?.rect ?? null)
+  const canResetCrop = computed(() => cropSource.value !== selectedImage.value)
+  const replaceCurrent = image => {
+    const previous = selectedImage.value
+    if (!previous) return
+    images.value.splice(selectedIndex.value, 1, image)
+    const labeled = new Set(labeledImages.value)
+    labeled.delete(previous)
+    if (hasImageLabels(image)) labeled.add(image)
+    labeledImages.value = labeled
+  }
+  const setCrop = (image, rect) => {
+    if (!selectedImage.value) return
+    crops.set(image, { source: cropSource.value, rect })
+    replaceCurrent(image)
+  }
+  const resetCrop = () => {
+    if (canResetCrop.value) replaceCurrent(cropSource.value)
+  }
 
   const addImages = (newImages) => {
     const selectFirstImage = images.value.length === 0 && newImages.length > 0
@@ -58,6 +80,11 @@ export const useImages = () => {
   }
 
   return {
+    cropSource,
+    cropBounds,
+    canResetCrop,
+    setCrop,
+    resetCrop,
     images,
     labeledImages,
     selectedImage,

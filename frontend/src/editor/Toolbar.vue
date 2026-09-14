@@ -6,7 +6,6 @@ defineProps({
   brushSize: { type: Number, required: true },
   zoom: { type: Number, required: true },
   canReset: { type: Boolean, required: true },
-  predictionStatus: { type: String, default: '' },
 })
 
 const emit = defineEmits([
@@ -120,7 +119,6 @@ const emit = defineEmits([
           />
         </label>
       </div>
-      <span class="editor-toolbar__status" role="status" aria-live="polite">{{ predictionStatus }}</span>
     </div>
   </section>
 </template>

@@ -5,16 +5,21 @@ const props = defineProps({
   width: { type: Number, default: null },
   parameters: { type: Object, required: true },
   busy: { type: Boolean, default: false },
+  locked: { type: Boolean, default: false },
   hasImage: { type: Boolean, default: false },
 })
-const emit = defineEmits(['apply', 'collapse'])
+const emit = defineEmits(['apply', 'collapse', 'resize'])
 const draft = ref({ ...props.parameters })
 const widthDraft = ref(props.width)
 const form = ref(null)
+const resize = event => {
+  if (props.busy || props.locked || !event.target.checkValidity()) return
+  emit('resize', widthDraft.value === '' ? null : widthDraft.value)
+}
 watch(() => props.parameters, value => { draft.value = { ...value } })
 watch(() => props.width, value => { widthDraft.value = value })
 const apply = () => {
-  if (props.busy || !props.hasImage) return
+  if (props.busy || props.locked || !props.hasImage) return
   if (!form.value.checkValidity()) {
     form.value.reportValidity()
     return
@@ -39,11 +44,11 @@ const apply = () => {
           <path d="m9 5 7 7-7 7" />
         </svg>
       </button>
-      <button class="find-regions" type="submit" :disabled="busy || !hasImage">{{ busy ? 'Processing…' : 'Find regions' }}</button>
+      <button class="find-regions" type="submit" :disabled="busy || locked || !hasImage">{{ busy ? 'Processing…' : 'Find regions' }}</button>
     </div>
-      <fieldset id="region-settings" :disabled="busy" aria-label="Region settings">
+      <fieldset id="region-settings" :disabled="busy || locked" aria-label="Region settings">
         <label><span>Width</span>
-          <input v-model.number="widthDraft" type="number" min="1" step="1" placeholder="Original"
+          <input v-model.number="widthDraft" type="number" min="1" step="1" placeholder="Original" @change="resize"
             title="Working image width" /><span class="unit">px</span>
         </label>
         <label><span>Diameter</span>
