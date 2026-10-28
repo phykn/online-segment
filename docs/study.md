@@ -117,4 +117,5 @@ def line_score(img, L=9, off=2.5, n=16):
 - **Polygons that add particle** should claim only pixels brighter than the pore (> 55). Otherwise they carry a dark strip along their edge.
 - **Rims, second pass:** a rim separated from its section by a thin dark line sits 5–8 px out. Growing in 5 px steps up to 10 px from the section caught these. Up to 16 px it also took in surfaces behind the section.
 - **Snapping can fail** where a dark line runs just inside a rim. The path then cuts the rim off, and the edge is better kept as drawn.
+- **Crack width as seen, not 1 px:** for sample4 the key should match the image, so the 1 px thinning was dropped. Compare each pixel with the section around it: a 15 px median of the smoothed image is the section level, since slits are too thin to move it. Pixels darker than that by more than 35 seed a crack; it grows through pixels darker by more than 25. A 5 px black-hat above 16 adds slits 1–2 px wide that the median rule misses. At 22/12 the shaded slopes beside each slit came in and cracks were twice too wide; at 40/28 slits broke apart.
 
