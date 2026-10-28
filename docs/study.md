@@ -73,3 +73,9 @@ def line_score(img, L=9, off=2.5, n=16):
 ## Thin gaps and cracks inside particles (sample2, second pass)
 - **Gap thinning (worked):** visit the pixels the gap cut added, brightest first. Give one back to particle when its 4-neighbours touch exactly one particle piece, so returning it joins nothing new. Repeat until stable. The gaps become the darkest 1 px separating line, and the number of pieces stays the same (7,299 px went down to 1,853).
 - **Cracks inside particles:** take particle pixels with line score > 9, smoothed level < 138, at least 2 px inside the outline. Keep components whose length (4·√ev_max) is 6 px or more. Pore that is enclosed by one particle piece, or that is a thin line touching only one piece, counts as well. Hand vetting kept 27 of 59 candidates. The rejects were image-edge artefacts, notches at an outline and faint specks, so a stricter score (12–14) alone would miss real cracks.
+
+## Over-splitting check (sample2, third pass)
+- **Problem:** automatic and hand cuts also split some particles that are really one piece.
+- **Method:** for every pair of pieces, take the seam pixels the cut added between them. Contrast = median smoothed level of the two pieces within 3 px of the seam minus median level on the seam. Sort the seams by contrast and vet them in contact sheets, faintest first.
+- **Result:** of the 120 faintest seams (contrast below about 16), 49 showed no visible gap and were joined again. That took the piece count from 258 to 200. Seams with contrast above 16 were almost all real.
+- **For automation:** a contrast threshold of about 10–12 would catch most false splits. Long straight hand cuts through uniform grey were the worst offenders. A darkest path always exists, even where there is no gap.
