@@ -35,7 +35,7 @@ class ModelTests(unittest.TestCase):
         masks = np.ones((9, 11), np.int32); logits = np.zeros(masks.shape, np.float32)
         edits = np.zeros((9, 11), np.int8); edits[:, 5:] = 1
         endpoints = Endpoints(np.indices(masks.shape).astype(np.float32), masks > 0)
-        with patch.object(config.feature, 'kind', 'hybrid'), patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run', return_value=(masks, logits, raw, endpoints)) as run:
+        with patch.object(config.feature, 'kind', 'hybrid'), patch.object(config.feature, 'components', 64), patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run', return_value=(masks, logits, raw, endpoints)) as run:
             model.configure(None)
             model.propose(image)
             model.fit([(image, edits)])

@@ -2,14 +2,14 @@
 
 Online Segment is a local web app for pixel-level image segmentation.
 
-It uses a pretrained model to find candidate regions, then trains a Random Forest from the labels you provide. The Random Forest predicts every pixel, including areas the region finder missed.
+It uses a pretrained model to find candidate regions, then trains a Random Forest from the labels you provide. The Random Forest reads frozen DINOv3 features at several magnifications and predicts every pixel, including areas the region finder missed.
 
 ## What it does
 
 - Runs locally in your browser; images stay on your computer.
 - Finds candidate regions with a lightweight CPDINO ViT-B model.
 - Lets you label regions or paint pixels with Q, W, E, and R.
-- Learns from your labels and predicts the full image with a pixel Random Forest.
+- Learns from your labels and predicts the full image with a pixel Random Forest on multi-scale DINOv3 features.
 - Supports undo, redo, uncertain-pixel highlighting, and paired image/mask ZIP export.
 - Saves images, training labels, regions and settings in a project file for later editing.
 
@@ -17,7 +17,9 @@ Q, W, E, and R have no built-in meaning. Assign them to any classes that fit you
 
 ## Quick start
 
-Requirements: Python 3.10 or newer, Node.js, Git, and Git LFS. A CUDA-capable GPU is optional but recommended for faster region finding and Random Forest prediction. With a CUDA-enabled PyTorch installation, prediction automatically uses the GPU and falls back to CPU if CUDA is unavailable or fails. Random Forest training uses the CPU.
+Requirements: Python 3.10 or newer, Node.js, Git, and Git LFS. A CUDA-capable GPU is optional but recommended for faster region finding and Random Forest prediction. With a CUDA-enabled PyTorch installation, prediction automatically uses the GPU and falls back to CPU if CUDA is unavailable or fails. Random Forest training uses the CPU. DINOv3 features use CUDA, then Apple MPS, then CPU.
+
+Download the DINOv3 ViT-B/16 LVD-1689M checkpoint from [Meta](https://ai.meta.com/resources/models-and-libraries/dinov3-downloads/) after accepting the DINOv3 License, and save it as `backend/weights/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth`. It is not tracked by Git.
 
 ```powershell
 git lfs install
@@ -64,10 +66,11 @@ For a shared server, use a single backend worker and read the [deployment review
 
 ## Documentation
 
+- [DINOv3 multi-scale features](docs/dino-features.md)
 - [Feature comparison](docs/feature-comparison.md)
 - [Cellpose context comparison](docs/cellpose-context-comparison.md)
 - [ViT-B refactor notes](docs/vitb-refactor.md)
 
 ## License
 
-Online Segment is released under the [MIT License](LICENSE). It uses [Cellpose](https://github.com/MouseLand/cellpose) and [DINOv3](https://github.com/facebookresearch/dinov3); their licenses remain applicable to those components.
+Online Segment is released under the [MIT License](LICENSE). It uses [Cellpose](https://github.com/MouseLand/cellpose) and [DINOv3](https://github.com/facebookresearch/dinov3); their licenses remain applicable to those components. The multi-scale feature design draws on [FSSDINO](https://arxiv.org/abs/2602.07550).

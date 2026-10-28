@@ -16,12 +16,21 @@ cellpose:
   cache_mb: 128
   min_area: 8
 feature:
-  kind: hybrid
-  components: 64
+  kind: dino
+  components: 32
   texture: false
   flow: true
-  cellpose: statistics
+  cellpose: none
   cache_mb: 256
+dino:
+  checkpoint: weights/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth
+  arch: vitb16
+  device: auto
+  scales: [2, 4, 8]
+  tile: 512
+  overlap: 128
+  channels: rgb
+  cache_mb: 1024
 export:
   max_age: 3600
   temp_prefix: online-segment

@@ -3,13 +3,25 @@ import numpy as np
 from scipy.ndimage import gaussian_filter, sobel, uniform_filter
 from src.segment.context import Context
 from src.segment.encoder import Tokens
+from src.segment.dino import Pyramid
+
+
+def luminance(image):
+    gray = image.astype(np.float32) / 255 @ np.array([.2126, .7152, .0722], np.float32)
+    low, high = np.percentile(gray, [1, 99])
+    return np.clip((gray-low)/(high-low), 0, 1) if high > low else np.zeros_like(gray)
+
+
+def pixel_features(image):
+    """Pixel-exact companions to DINO tokens, which cannot place edges finer than their stride."""
+    gray = luminance(image)
+    # Brightness relative to fine, local and wide surroundings separates small grains from their matrix.
+    return np.stack([gray] + [gray-gaussian_filter(gray, sigma, mode='reflect') for sigma in (1, 4, 16)],
+                    axis=-1).astype(np.float32)
 
 
 def image_features(image, texture=False):
-    rgb = image.astype(np.float32) / 255
-    gray = rgb @ np.array([.2126, .7152, .0722], np.float32)
-    low, high = np.percentile(gray, [1, 99])
-    gray = np.clip((gray-low)/(high-low), 0, 1) if high > low else np.zeros_like(gray)
+    gray = luminance(image)
     scale = min(gray.shape) / 512
     base = np.clip(scale, .5, 8)
     values = [gray]
@@ -39,7 +51,7 @@ def image_features(image, texture=False):
 class Features:
     shape: tuple
     local: np.ndarray | None = None
-    tokens: Tokens | None = None
+    tokens: Tokens | Pyramid | None = None
     context: Context | None = None
     scale: float = 1.
     context_mode: str = 'statistics'

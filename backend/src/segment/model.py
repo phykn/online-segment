@@ -5,9 +5,10 @@ from fastapi import HTTPException
 from sklearn.decomposition import PCA
 from src.config import config, CellposeParameters
 from src.segment.runtime import runtime
+from src.segment.dino import encoder as dino
 from src.segment.classifier import Classifier
 from src.segment.cache import Cache
-from src.segment.feature import Features, image_features
+from src.segment.feature import Features, image_features, pixel_features
 from src.segment.sample import quotas, spatial
 from src.segment.context import extract as extract_context
 
@@ -16,7 +17,7 @@ class Segmenter:
     def __init__(self):
         self.lock = RLock()
         self.features = Cache(config.feature.cache_mb)
-        self.raw = Cache(config.cellpose.cache_mb)
+        self.raw = Cache(config.dino.cache_mb if config.feature.kind == 'dino' else config.cellpose.cache_mb)
         self.segments = Cache(config.cellpose.cache_mb)
         self.progress = dict(stage='idle', done=0, total=0)
         self.classifier = Classifier()
@@ -36,7 +37,8 @@ class Segmenter:
     def configure(self, width, parameters=None):
         parameters = parameters if parameters is not None else self.parameters
         signature = (width, config.feature.kind, config.feature.components, config.feature.cellpose, config.feature.texture, config.feature.flow,
-                     tuple(config.cellpose.model_dump().items()), tuple(parameters.model_dump().items()))
+                     tuple(config.cellpose.model_dump().items()), tuple(parameters.model_dump().items()),
+                     repr(config.dino.model_dump()))
         if signature != self.signature:
             self.clear()
             self.signature = signature
@@ -49,7 +51,9 @@ class Segmenter:
     def tokens(self, image, progress=None):
         key = self.key(image)
         value = self.raw.get(key)
-        if value is None:
+        if value is None and config.feature.kind == 'dino':
+            value = self.raw.put(key, dino.run(image, progress or self.report))
+        elif value is None:
             if config.feature.cellpose != 'none':
                 _, value = self.run(image, capture=True, progress=progress)
             else:
@@ -86,12 +90,12 @@ class Segmenter:
         for i, (image, _, _) in enumerate(records):
             # Bounded per-image pools avoid retaining all raw encoder volumes.
             pools.append(self.tokens(image).sample(limit//len(records) + (i < limit % len(records))))
-        data = np.concatenate(pools)
         self.report(stage='pca', done=0, total=1)
-        pca = PCA(n_components=min(config.feature.components, *data.shape),
-                  whiten=False, svd_solver='randomized', random_state=0)
-        pca.fit(data)
-        self.pca = pca
+        if isinstance(pools[0], list):
+            # DINO pyramid: one projection per magnification keeps fine and coarse tokens separate.
+            self.pca = [fit_pca(np.concatenate(level)) for level in zip(*pools)]
+        else:
+            self.pca = fit_pca(np.concatenate(pools))
 
     def feature(self, image, progress=None, scale=1.):
         self.validate(image)
@@ -101,7 +105,11 @@ class Segmenter:
             return found
         report = progress or self.report
         report(stage='features', done=0, total=1)
-        local = image_features(image, config.feature.texture) if config.feature.kind != 'encoder' else None
+        local = None
+        if config.feature.kind == 'dino':
+            local = pixel_features(image)
+        elif config.feature.kind != 'encoder':
+            local = image_features(image, config.feature.texture)
         tokens = None
         if config.feature.kind != 'image':
             if self.pca is None:
@@ -136,3 +144,9 @@ class Segmenter:
         self.training = {}
         self.pca = None
         self.signature = None
+
+
+def fit_pca(data):
+    pca = PCA(n_components=min(config.feature.components, *data.shape),
+              whiten=False, svd_solver='randomized', random_state=0)
+    return pca.fit(data)
