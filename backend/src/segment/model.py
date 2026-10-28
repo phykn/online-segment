@@ -8,7 +8,7 @@ from src.segment.runtime import runtime
 from src.segment.dino import encoder as dino
 from src.segment.classifier import Classifier
 from src.segment.cache import Cache
-from src.segment.feature import Features, image_features, pixel_features
+from src.segment.feature import Features, image_features
 from src.segment.sample import quotas, spatial
 from src.segment.context import extract as extract_context
 
@@ -106,9 +106,7 @@ class Segmenter:
         report = progress or self.report
         report(stage='features', done=0, total=1)
         local = None
-        if config.feature.kind == 'dino':
-            local = pixel_features(image)
-        elif config.feature.kind != 'encoder':
+        if config.feature.kind != 'encoder':
             local = image_features(image, config.feature.texture)
         tokens = None
         if config.feature.kind != 'image':

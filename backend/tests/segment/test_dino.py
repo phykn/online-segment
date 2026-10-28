@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 from src.config import config, DinoConfig
 from src.segment.dino import DinoEncoder, Level, Pyramid, PATCH, channels
+from src.segment.feature import image_features
 from src.segment.model import Segmenter
 
 
@@ -69,7 +70,7 @@ class DinoTests(unittest.TestCase):
             DinoEncoder().load()
         self.assertEqual(error.exception.status_code, 503)
 
-    def test_segmenter_trains_on_dino_and_pixel_channels_without_cellpose(self):
+    def test_segmenter_trains_on_dino_and_image_channels_without_cellpose(self):
         rng = np.random.default_rng(0)
         image = np.zeros((24, 32, 3), np.uint8); image[:, 16:] = 200
         def run(img, progress):
@@ -83,7 +84,7 @@ class DinoTests(unittest.TestCase):
             model.fit([(image, labels)])
             self.assertEqual(len(model.pca), 2)
             features = model.feature(image)
-            self.assertEqual(features.pixels(np.arange(3)).shape, (3, 4+2*min(config.feature.components, 8)))
+            self.assertEqual(features.pixels(np.arange(3)).shape, (3, image_features(image).shape[-1]+2*min(config.feature.components, 8)))
             pred, _ = model.classifier.predict(features)
         self.assertEqual(encode.call_count, 1)
         self.assertTrue((pred[:, :8] == 0).all() and (pred[:, 24:] == 1).all())

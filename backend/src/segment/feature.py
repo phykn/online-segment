@@ -12,14 +12,6 @@ def luminance(image):
     return np.clip((gray-low)/(high-low), 0, 1) if high > low else np.zeros_like(gray)
 
 
-def pixel_features(image):
-    """Pixel-exact companions to DINO tokens, which cannot place edges finer than their stride."""
-    gray = luminance(image)
-    # Brightness relative to fine, local and wide surroundings separates small grains from their matrix.
-    return np.stack([gray] + [gray-gaussian_filter(gray, sigma, mode='reflect') for sigma in (1, 4, 16)],
-                    axis=-1).astype(np.float32)
-
-
 def image_features(image, texture=False):
     gray = luminance(image)
     scale = min(gray.shape) / 512

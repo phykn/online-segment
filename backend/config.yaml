@@ -17,7 +17,7 @@ cellpose:
   min_area: 8
 feature:
   kind: dino
-  components: 32
+  components: 8
   texture: false
   flow: true
   cellpose: none

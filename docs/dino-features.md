@@ -1,6 +1,6 @@
 # DINOv3 multi-scale RF features
 
-2026-10-28. The default RF input is now frozen DINOv3 ViT-B/16 tokens at several input magnifications plus four pixel channels. Cellpose context is off by default (`feature.cellpose: none`); CPDINO is still used for **Find regions**.
+2026-10-28. The default RF input is now frozen DINOv3 ViT-B/16 tokens at several input magnifications plus the 16 image channels of the previous RF. Cellpose context is off by default (`feature.cellpose: none`); CPDINO is still used for **Find regions**.
 
 ## Why
 
@@ -8,8 +8,8 @@ On battery SEM cross-sections the previous image-only RF separated classes mostl
 
 The training-free FSSDINO method ([arXiv 2602.07550](https://arxiv.org/abs/2602.07550), [code](https://github.com/hussni0997/fssdino)) shows that frozen DINOv3 features separate semantic regions well across domains. Its 16 px tokens cannot draw 2–3 px cracks directly. Two changes close that gap:
 
-- **Upscale before encoding.** At scale `s` each token covers `16/s` original pixels. The default `[2, 4, 8]` gives 8, 4 and 2 px tokens; the coarse level keeps context and the fine level reaches crack width. Each level gets its own PCA (`feature.components`, default 32).
-- **Pixel channels beside the tokens.** Luminance and luminance minus Gaussian blur at σ = 1, 4 and 16 px. Tokens are bilinearly interpolated, so these channels place edges and small bright grains exactly.
+- **Upscale before encoding.** At scale `s` each token covers `16/s` original pixels. The default `[2, 4, 8]` gives 8, 4 and 2 px tokens; the coarse level keeps context and the fine level reaches crack width. Each level gets its own PCA (`feature.components`, default 8).
+- **Image channels beside the tokens.** The previous RF's 16 brightness, gradient and ridge channels. Tokens are bilinearly interpolated, so these channels place edges, thin cracks and small grains exactly, and they keep pore and binder apart by brightness. With 8 PCA dims per level the trees pick them often enough; with 32 dims they were drowned out.
 
 Tiles of `dino.tile` px overlap by `dino.overlap` px and are blended with a linear taper. The FSSDINO class prototypes and Gram maps were tried as RF channels and dropped: with 10 clicks per class they collapsed (crack F1 ≈ 0.05), and with dense labels they leaked training labels into features.
 
@@ -19,6 +19,7 @@ Tiles of `dino.tile` px overlap by `dino.overlap` px and are blended with a line
 
 | Key | Default | Meaning |
 |---|---|---|
+| `feature.components` | 8 | PCA dims per DINO level |
 | `feature.kind` | `dino` | `image`, `encoder` and `hybrid` keep the previous CPDINO-based features |
 | `dino.checkpoint` | `weights/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth` | Downloaded separately under the DINOv3 License; not tracked by Git |
 | `dino.scales` | `[2, 4, 8]` | Input magnifications |
@@ -30,26 +31,33 @@ Scale 8 at the default width of 768 px stores about 110 MiB of tokens per image.
 
 ## Evaluation
 
-`eval/make_truth.py` builds a reviewable particle / pore / crack mask for `frontend/asset/sample1.png`. It thresholds brightness, splits particles with watershed and marks thin dark lines inside solid particles as cracks. Fine-grain agglomerates, hairline cracks and mixed edge pixels are set to 255 and are not scored. Because particle and pore come from a brightness threshold, this truth favours brightness features for those two classes. Read crack scores and the overlays before reading particle/pore IoU.
+`eval/make_truth.py` builds a reviewable four-class mask (particle, pore, crack, binder; 255 unscored) for `frontend/asset/sample1.png`:
 
-`eval/evaluate.py` trains on the left half and scores the right half. `--clicks N` places N small dabs per class; `--strokes N` draws N short strokes per class and traces cracks. `crack_f1_2px` counts a crack hit within 2 px, because thin-line IoU is dominated by 1 px offsets.
+- Rules mark only confident seeds: flat particle interiors, wide mid-gray binder, dark pores, dark lines deep inside solid particles as crack, and, outside particles, agglomerate grains as particle with the narrow gaps between them as pore.
+- The app's DINO + ExtraTrees pipeline, trained on those seeds, fills the rest. Pixels below 0.5 confidence, crack specks under 8 px and the mixed particle rim are unscored.
 
-Width 768, three label seeds each, RF settings unchanged:
+The seeds come from brightness, so particle/pore/binder favour brightness features; the DINO fill favours DINO on faint cracks. Review the overlay in the app before trusting the numbers.
 
-| Labels | Features | Particle IoU | Pore IoU | Crack IoU | Crack F1 (2 px) |
-|---|---|---:|---:|---:|---:|
-| 10 clicks | image (previous) | 0.911 | 0.931 | 0.104 | 0.240 |
-| | DINO 2/4/8 + pixel | 0.944 | 0.869 | 0.191 | 0.380 |
-| 30 clicks | image (previous) | 0.934 | 0.953 | 0.128 | 0.293 |
-| | DINO 2/4/8 + pixel | 0.980 | 0.961 | 0.372 | 0.664 |
-| 30 strokes | image (previous) | 0.831 | 0.879 | 0.053 | 0.158 |
-| | DINO 2/4/8 + pixel | 0.898 | 0.790 | 0.241 | 0.462 |
+`eval/evaluate.py` trains on the left half and scores the right half. `--clicks N` places N small dabs per class; `--strokes N` draws N short strokes per class and traces cracks. `crack_f1_2px` counts a crack hit within 2 px.
 
-Visually, the previous features mark gaps in fine-grain agglomerates as cracks; the DINO features keep cracks inside particles. The remaining pore error with strokes comes from small bright grains in agglomerates that strokes rarely cover.
+Truth v2, native width 1024, seed 0, 30 labels per class:
+
+| Labels | Features | Particle | Pore | Crack | Binder | Crack F1 (2 px) |
+|---|---|---:|---:|---:|---:|---:|
+| clicks | image (previous) | 0.901 | 0.600 | 0.577 | 0.861 | 0.849 |
+| | DINO PCA32 + 4 pixel channels | 0.874 | 0.414 | 0.440 | 0.698 | 0.842 |
+| | DINO PCA8 + 16 image channels | 0.931 | 0.547 | 0.642 | 0.830 | 0.905 |
+| strokes | image (previous) | 0.854 | 0.470 | 0.502 | 0.870 | 0.845 |
+| | DINO PCA32 + 4 pixel channels | 0.806 | 0.314 | 0.376 | 0.818 | 0.824 |
+| | DINO PCA8 + 16 image channels | 0.881 | 0.413 | 0.552 | 0.844 | 0.887 |
+
+The default is the last row. It is best on crack and particle; the image-only RF still separates pore and binder better. Downscaling to width 768 thins the cracks and lowered every DINO variant, so evaluate at native width.
+
+On the earlier three-class truth (v1, few dark cracks only), the PCA8 + image channel variant was worse with strokes (crack F1 0.70 → 0.19). That truth missed most faint cracks, so v2 is the reference; this disagreement is the main reason to check results on your own images.
 
 ### Classifier
 
-With these features fixed, ExtraTrees (same settings as the previous RF: 200 trees, depth 10, leaf 2, sqrt, balanced) replaced the RF. Width 768, three seeds, crack F1 (2 px):
+With DINO PCA32 + 4 pixel channels fixed and the v1 truth, ExtraTrees (same settings as the previous RF: 200 trees, depth 10, leaf 2, sqrt, balanced) replaced the RF. Width 768, three seeds, crack F1 (2 px):
 
 | Labels | RF | ExtraTrees |
 |---|---:|---:|
@@ -64,6 +72,7 @@ Timing on an Apple M-series GPU (MPS), sample1 at width 768: first prediction in
 
 ## Limits
 
-- One image and an automatically built truth. Particle/pore scores are biased towards brightness features, and no other material or modality has been tested yet.
+- One image and an automatically built truth that DINO helped fill; no other material or modality has been tested yet.
 - CPDINO-based features and Cellpose context were not compared, because the CPDINO checkpoint was a Git LFS pointer in this workspace.
+- Image-only features remain better for pore vs binder.
 - `channels: enhanced` was better with 30–100 clicks and worse with 10, so `rgb` stays the default.

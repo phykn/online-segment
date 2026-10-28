@@ -33,7 +33,7 @@ class ExportConfig(BaseModel):
 
 class FeatureConfig(BaseModel):
     kind: Literal['image', 'encoder', 'hybrid', 'dino'] = 'image'
-    components: Literal[32, 64] = 32
+    components: Literal[8, 16, 32, 64] = 8
     texture: bool = False
     flow: bool = True
     cache_mb: int = Field(default=256, gt=0)

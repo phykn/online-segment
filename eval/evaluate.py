@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 from src.config import config  # noqa: E402
 from src.segment.model import Segmenter  # noqa: E402
 
-NAMES = ('particle', 'pore', 'crack')
+NAMES = ('particle', 'pore', 'crack', 'binder')
 
 
 def load(image_path, truth_path, width):
@@ -60,7 +60,7 @@ def strokes(train, count, seed=0, length=24, radius=2, margin=4):
         win = (slice(y0, y1), slice(x0, x1))
         out[win][d & (train[win] == label)] = label
 
-    for label in (0, 1):
+    for label in (0, 1, 3):
         # People brush well inside a region, away from uncertain edges.
         core = ndi.distance_transform_edt(train == label) > margin
         ys, xs = np.nonzero(core)
