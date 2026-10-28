@@ -8,8 +8,14 @@ from src.segment.dino import Pyramid
 
 def luminance(image):
     gray = image.astype(np.float32) / 255 @ np.array([.2126, .7152, .0722], np.float32)
-    low, high = np.percentile(gray, [1, 99])
-    return np.clip((gray-low)/(high-low), 0, 1) if high > low else np.zeros_like(gray)
+    low, high = np.percentile(gray, [.5, 99.5])
+    if high <= low:
+        return np.zeros_like(gray)
+    # Above the black level, detector gain and gamma become an offset and a factor in log space,
+    # which the z-score removes, so brightness/contrast settings do not move the trees' thresholds.
+    value = np.log(np.maximum(gray-low, 0) + .05*(high-low))
+    std = value.std()
+    return (np.clip((value-value.mean())/std, -3, 3)/6 + .5).astype(np.float32) if std > 0 else np.zeros_like(gray)
 
 
 def image_features(image, texture=False):

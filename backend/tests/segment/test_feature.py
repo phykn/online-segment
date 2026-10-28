@@ -3,10 +3,23 @@ import cv2
 import numpy as np
 from src.segment.cache import Cache
 from src.segment.encoder import Tokens
-from src.segment.feature import image_features
+from src.segment.feature import image_features, luminance
 
 
 class FeatureTests(unittest.TestCase):
+    def test_luminance_ignores_gain_offset_and_gamma(self):
+        rng = np.random.default_rng(0)
+        field = cv2.GaussianBlur(rng.normal(size=(96, 128)).astype(np.float32), (0, 0), 6)
+        gray = np.select([field < -.05, field < .05], [.1, .4], .85) + rng.normal(0, .02, field.shape)
+        image = lambda g: np.repeat(np.rint(np.clip(g, 0, 1)*255).astype(np.uint8)[..., None], 3, -1)
+        base = luminance(image(gray))
+        self.assertLess(np.abs(luminance(image(.2 + .6*gray)) - base).mean(), .005)
+        for gamma in (.7, 1.5):
+            self.assertLess(np.abs(luminance(image(np.clip(gray, 0, 1)**gamma)) - base).mean(), .02)
+        # The linear stretch it replaced moved by far more under the same gamma.
+        stretch = lambda g: np.clip((g - np.percentile(g, 1)) / (np.percentile(g, 99) - np.percentile(g, 1)), 0, 1)
+        self.assertGreater(np.abs(stretch(np.clip(gray, 0, 1)**1.5) - stretch(gray)).mean(), .05)
+
     def test_projection_coordinates_match_resize_overlap_and_padding(self):
         from cellpose.transforms import average_tiles
         rng = np.random.default_rng(4)
@@ -64,4 +77,4 @@ class FeatureTests(unittest.TestCase):
         np.testing.assert_array_equal(textured[..., :16], baseline)
         self.assertTrue(np.isfinite(textured).all())
         self.assertLess(textured[64, 16, 16:].max(), .001)
-        self.assertGreater(textured[64, 112, 16:].min(), .4)
+        self.assertGreater(textured[64, 112, 16:].min(), .1)

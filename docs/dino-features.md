@@ -75,6 +75,27 @@ Debiasing and image-only trees, measured through the app's `Segmenter` (native w
 
 Trained on the original and applied to the right half after a change in acquisition (30 clicks and 30 strokes, seeds 0–1, mIoU), the default stayed ahead of the image-only RF: gamma 0.6 0.654 vs 0.633, gamma 1.6 0.401 vs 0.383, noise 0.555 vs 0.535, blur 0.629 vs 0.622, contrast 0.707 vs 0.695. Both still drop sharply under gamma 1.6 and noise, because the image channels carry absolute brightness. Histogram-equalizing the input made gamma and contrast changes harmless but cost 0.045 mIoU on the original image, so it is not the default.
 
+### Brightness robustness
+
+Image channels are now computed from a log-intensity z-score instead of a 1–99 % linear stretch: subtract the 0.5 % black level, take `log(gray - black + 0.05·range)`, z-score, clip at ±3σ. In log space a detector gain becomes an offset and a gamma becomes a factor, so the z-score removes both; a black-level offset is removed by the black point. Measured through the app's `Segmenter`, trained on the original and predicting the same right half after each change (30 clicks and 30 strokes):
+
+| Seed | Luminance | In-domain | gamma 0.6 | gamma 1.6 | noise | blur | contrast | Shift mean |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 0 | linear stretch (before) | 0.683* | 0.672 | 0.422 | 0.566 | 0.640 | 0.713 | 0.603 |
+| 0 | log z-score | 0.691* | 0.630 | 0.739 | 0.624 | 0.669 | 0.718 | 0.676 |
+| 1 | linear stretch (before) | 0.709 | 0.636 | 0.381 | 0.545 | 0.617 | 0.701 | 0.576 |
+| 1 | log z-score | 0.721 | 0.638 | 0.732 | 0.623 | 0.637 | 0.720 | 0.670 |
+
+\* mean over clicks and strokes 5/10/30. The image-only RF gains the same way (shift mean 0.583 → 0.665).
+
+Rejected:
+
+- A linear z-score of the input (as in BiRefNet for SEM) changed nothing here: the old stretch was already linear, and DINO barely reacts to gain and offset.
+- Per-image rank normalization or histogram matching of every feature column fixed gamma just as well, but assume every image has the same class mix. Processing quarter crops of the right half as separate images (different particle/pore/binder proportions) dropped mIoU from 0.647 to 0.586–0.590. The log z-score uses only a mean and a spread and cost less there (0.611).
+- Re-mapping each image's per-class brightness onto the training image after a first prediction fixed gamma but bent the curve on blur and contrast.
+- The same log z-score on the DINO input added nothing.
+- A σ = 0.7 Gaussian before the image channels raised the noise case by 0.06 but cost 0.008 in-domain; it is not the default.
+
 Tried without gain: more labelled pixels per class, deeper trees, other class weights, auto-context, guided filtering of probabilities, k-means cluster similarities instead of PCA, and scales 1 or 12.
 
 On the earlier three-class truth (v1, few dark cracks only), the PCA8 + image channel variant was worse with strokes (crack F1 0.70 → 0.19). That truth missed most faint cracks, so v2 is the reference; this disagreement is the main reason to check results on your own images.
