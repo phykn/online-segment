@@ -124,13 +124,20 @@ class Segmenter:
             self.prepare_pca(records)
         limits = [quotas(values, 10000) for values in counts]
         samples = []
+        local = 0
         for i, (image, mask, scale) in enumerate(records):
             indices = np.concatenate([spatial(mask == label, limits[label][i]) for label in range(4)])
-            values = self.feature(image, scale=scale).pixels(indices) if can_train else np.empty((len(indices), 0), np.float32)
+            values = np.empty((len(indices), 0), np.float32)
+            if can_train:
+                features = self.feature(image, scale=scale)
+                values = features.pixels(indices)
+                # Image channels lead the feature columns; with encoder tokens beside them the
+                # classifier also grows trees on the image channels alone.
+                local = features.local.shape[-1] if features.local is not None and features.tokens is not None else 0
             samples.append((values, mask.ravel()[indices]))
         self.report(stage='training', done=0, total=1)
         classifier = Classifier()
-        classifier.fit(samples)
+        classifier.fit(samples, local)
         self.classifier = classifier
         self.training = {(self.key(image), scale): (image, mask.copy(), scale) for image, mask, scale in records}
 

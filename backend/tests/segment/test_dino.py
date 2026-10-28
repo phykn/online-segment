@@ -23,11 +23,34 @@ def ramp(h, w):
     return np.stack([y/h, x/w, (y+x)/(h+w)], -1)
 
 
+class Positional(PatchMean):
+    """PatchMean plus a fixed pattern over in-tile token positions, like a magnified ViT tile."""
+    def __init__(self, side):
+        super().__init__()
+        self.pattern = torch.from_numpy(np.random.default_rng(1).normal(size=(3, side, side)).astype(np.float32))
+
+    def get_intermediate_layers(self, x, n, reshape, norm):
+        return [super().get_intermediate_layers(x, n, reshape, norm)[0] + self.pattern]
+
+
 class DinoTests(unittest.TestCase):
-    def encode(self, x, scale, tile, overlap):
+    def encode(self, x, scale, tile, overlap, model=None, debias=False):
         encoder = DinoEncoder(); encoder.device = 'cpu'
-        with patch.object(config.dino, 'tile', tile), patch.object(config.dino, 'overlap', overlap):
-            return encoder.encode(PatchMean(), x, scale)
+        with patch.object(config.dino, 'tile', tile), patch.object(config.dino, 'overlap', overlap), \
+                patch.object(config.dino, 'debias', debias):
+            return encoder.encode(model or PatchMean(), x, scale)
+
+    def test_debiasing_removes_the_pattern_shared_by_all_tiles(self):
+        x = np.random.default_rng(0).uniform(size=(96, 160, 3)).astype(np.float32)
+        # The pattern's own mean cannot be told from a constant offset in the content and stays.
+        centred = lambda level: level.grid.astype(np.float32) - level.grid.astype(np.float32).mean((0, 1))
+        clean = centred(self.encode(x, 2, 64, 16))
+        raw = centred(self.encode(x, 2, 64, 16, Positional(4)))
+        fixed = centred(self.encode(x, 2, 64, 16, Positional(4), debias=True))
+        self.assertLess(np.abs(fixed-clean).mean(), .1*np.abs(raw-clean).mean())
+        # A single tile cannot separate the pattern from the content, so it is left alone.
+        single = self.encode(x[:24, :24], 2, 64, 16, Positional(4), debias=True).grid
+        np.testing.assert_array_equal(single, self.encode(x[:24, :24], 2, 64, 16, Positional(4)).grid)
 
     def test_overlapping_tiles_match_a_single_pass(self):
         x = ramp(70, 150)

@@ -10,6 +10,7 @@ from src.config import config, CellposeParameters
 from src.api.model import predict as api_predict, proposals
 from src.api.schema import Mask, PredRequest, TrainingImage, ProposalRequest
 from src.data.mask import decode, encode
+from src.segment.classifier import Classifier
 from src.segment.model import Segmenter
 from src.segment.flow import Endpoints
 from src.segment.prediction import infer, predict
@@ -40,6 +41,20 @@ class ClassifierTests(unittest.TestCase):
         self.addCleanup(self.patch.stop)
         context = patch.object(config.feature, 'cellpose', 'none'); context.start()
         self.addCleanup(context.stop)
+
+    def test_half_the_trees_use_only_leading_image_channels(self):
+        rng = np.random.default_rng(0)
+        y = np.repeat([0, 1, 2], 60).astype(np.int8)
+        x = np.concatenate([y[:, None] + rng.normal(0, .1, (180, 2)), rng.normal(size=(180, 6))], 1).astype(np.float32)
+        classifier = Classifier()
+        classifier.fit([(x, y)], local=2)
+        trees = classifier.model.estimators_
+        self.assertEqual(len(trees), 200)
+        self.assertFalse(any((tree.tree_.feature >= 2).any() for tree in trees[100:]))
+        self.assertTrue(any((tree.tree_.feature >= 2).any() for tree in trees[:100]))
+        np.testing.assert_array_equal(classifier.model.predict(x), y)
+        classifier.fit([(x, y)])
+        self.assertEqual(len(classifier.model.estimators_), 200)
 
     def test_pixels_generalize_inside_one_proposal_and_outside_proposals(self):
         image, edits = fixture(); segmenter = Segmenter()

@@ -30,6 +30,7 @@ dino:
   tile: 512
   overlap: 128
   channels: rgb
+  debias: true
   cache_mb: 1024
 export:
   max_age: 3600

@@ -47,6 +47,7 @@ class DinoConfig(BaseModel):
     tile: int = Field(default=512, ge=64, multiple_of=16)
     overlap: int = Field(default=128, ge=0, multiple_of=16)
     channels: Literal['rgb', 'enhanced'] = 'rgb'
+    debias: bool = True
     max_tokens: int = Field(default=262_144, gt=0)
     cache_mb: int = Field(default=1024, gt=0)
 

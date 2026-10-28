@@ -3,6 +3,13 @@ from sklearn.ensemble import ExtraTreesClassifier
 from src.segment.cuda_forest import make_predictor
 
 
+def forest(trees):
+    # Random split thresholds generalise better than RF from a few brush strokes on DINO features.
+    # Trying 30% of features per split lets the few brightness channels compete with DINO dims.
+    return ExtraTreesClassifier(n_estimators=trees, max_depth=10, min_samples_leaf=2, max_features=.3,
+                                class_weight='balanced', random_state=0, n_jobs=-1)
+
+
 class Classifier:
     def __init__(self):
         self.model = None
@@ -11,19 +18,25 @@ class Classifier:
         self.counts = [0]*4
         self.classes = []
 
-    def fit(self, samples):
+    def fit(self, samples, local=0):
         selected = [(x, y) for x, y in samples if len(y)]
         self.count = sum(len(y) for _, y in selected)
         self.counts = [sum(int(np.count_nonzero(y == label)) for _, y in selected) for label in range(4)]
         self.classes = sorted(set(int(v) for _, y in selected for v in np.unique(y)))
         model = None
         if len(self.classes) >= 2:
-            # Random split thresholds generalise better than RF from a few brush strokes on DINO features.
-            # Trying 30% of features per split lets the few brightness channels compete with DINO dims.
-            model = ExtraTreesClassifier(n_estimators=200, max_depth=10,
-                min_samples_leaf=2, max_features=.3, class_weight='balanced',
-                random_state=0, n_jobs=-1)
-            model.fit(np.concatenate([x for x, _ in selected]), np.concatenate([y for _, y in selected]))
+            x = np.concatenate([x for x, _ in selected])
+            y = np.concatenate([y for _, y in selected])
+            split = 0 < local < x.shape[1]
+            model = forest(100 if split else 200).fit(x, y)
+            if split:
+                # Half the trees see only the leading pixel-exact image channels (the rest are zeroed,
+                # and constant columns are never split on). Averaging them with trees that also see
+                # encoder tokens keeps a few strokes from fitting token noise.
+                only = x.copy()
+                only[:, local:] = 0
+                model.estimators_ += forest(100).fit(only, y).estimators_
+                model.n_estimators = len(model.estimators_)
         self.model = model
         self.cuda = make_predictor(model) if model is not None else None
 

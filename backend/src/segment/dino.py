@@ -15,6 +15,8 @@ from src.config import config
 MEAN = np.array([.485, .456, .406], np.float32)
 STD = np.array([.229, .224, .225], np.float32)
 PATCH = 16
+# Fewer tiles than this give a per-position mean that is mostly image content, not artifact.
+MIN_TILES = 8
 
 
 def channels(image, mode):
@@ -135,14 +137,26 @@ class DinoEncoder:
         taper = (ramp[:, None]*ramp[None])[..., None]
         total = torch.zeros(ph//PATCH, pw//PATCH, model.embed_dim)
         weight = torch.zeros(ph//PATCH, pw//PATCH, 1)
+        position = torch.zeros(side, side, model.embed_dim)
+        corners = []
         with torch.no_grad():
             for y0 in starts(ph, tile, tile-overlap):
                 for x0 in starts(pw, tile, tile-overlap):
                     crop = image[..., y0:y0+tile, x0:x0+tile].to(self.device)
                     tokens = model.get_intermediate_layers(crop, n=1, reshape=True, norm=True)[0][0]
+                    tokens = tokens.permute(1, 2, 0).float().cpu()
                     ty, tx = y0//PATCH, x0//PATCH
-                    total[ty:ty+side, tx:tx+side] += tokens.permute(1, 2, 0).float().cpu()*taper
+                    total[ty:ty+side, tx:tx+side] += tokens*taper
                     weight[ty:ty+side, tx:tx+side] += taper
+                    position += tokens
+                    corners.append((ty, tx))
+        if cfg.debias and len(corners) >= MIN_TILES:
+            # A magnified tile is nearly uniform, so its tokens largely encode their place in the
+            # tile. That pattern repeats in every tile; the per-position mean over tiles estimates it.
+            bias = position/len(corners)
+            bias -= bias.mean((0, 1))
+            for ty, tx in corners:
+                total[ty:ty+side, tx:tx+side] -= bias*taper
         grid = (total/weight)[:-(-sh//PATCH), :-(-sw//PATCH)]
         return Level(grid.numpy().astype(np.float16), (sh/h, sw/w))
 
