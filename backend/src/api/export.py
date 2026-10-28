@@ -4,7 +4,7 @@ from starlette.background import BackgroundTask
 from starlette.responses import FileResponse
 
 from src.api.dependencies import SessionDep
-from src.api.schema import ExportArchiveRequest, ExportJobRequest, ExportRequest, Mask
+from src.api.schema import ExportJobRequest, Mask
 from src.data.mask import decode
 from src.data.image import read_bytes
 from src.export import archive, pipeline
@@ -23,24 +23,6 @@ def export_pair(file: UploadFile = File(), mask: str = Form()) -> Response:
     content = archive.make_pair_archive(file.filename or 'image',
         read_bytes(file.file.read()), decode(labels))
     return Response(content=content, media_type='application/zip')
-
-
-@router.post("")
-def export_mask(payload: ExportRequest) -> Response:
-    mask = decode(payload.mask)
-    png = archive.make_png(mask, payload.width, payload.height)
-    return Response(content=png, media_type="image/png")
-
-
-@router.post("/archive")
-def export_archive(payload: ExportArchiveRequest) -> Response:
-    files = [(item.name, decode(item.mask)) for item in payload.files]
-    content = archive.make_mask_archive(
-        files,
-        payload.width,
-        payload.height,
-    )
-    return Response(content=content, media_type="application/zip")
 
 
 @router.post("/jobs")

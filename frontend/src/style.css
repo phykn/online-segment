@@ -675,11 +675,6 @@ button {
   outline-offset: 2px;
 }
 
-.model-actions {
-  display: grid;
-  gap: 8px;
-}
-
 .download-all-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

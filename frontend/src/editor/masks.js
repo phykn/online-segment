@@ -69,16 +69,6 @@ export const restoreLabelMask = (image, snapshot) => {
   return storeMask(image, mask)
 }
 
-export const resizeLabelMask = (image, width, height) => {
-  const mask = getLabelMask(image)
-  if (!mask || (mask.width === width && mask.height === height)) return mask
-
-  const resized =
-    variantsByImage.get(image)?.get(getMaskKey(width, height)) ??
-    resizeMask(mask, width, height)
-  return storeMask(image, resized)
-}
-
 export const markLabelMaskChanged = (image) => {
   const mask = getLabelMask(image)
   if (!mask) return

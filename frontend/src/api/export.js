@@ -11,19 +11,6 @@ export const exportPair = async (image, mask) => {
   return response.blob()
 }
 
-export const exportMask = async (mask, width, height) => {
-  const response = await fetch(`${API_URL}/export`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mask, width, height }),
-  })
-
-  if (!response.ok) {
-    throw new Error(await readError(response, 'Could not export the mask.'))
-  }
-  return response.blob()
-}
-
 const createExport = async (total, signal) => {
   const response = await sessionFetch('/export/jobs', {
     method: 'POST',

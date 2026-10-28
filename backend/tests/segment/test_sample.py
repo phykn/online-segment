@@ -10,7 +10,7 @@ class SampleTests(unittest.TestCase):
             mask[20:20+side, 20:20+side] = True
             mask[800:810, 800:810] = True
             indices = spatial(mask, 10000)
-            y, x = np.divmod(indices, 1024)
+            y = indices // 1024
             self.assertLessEqual(np.count_nonzero(y < 800), 256)
             self.assertGreaterEqual(np.count_nonzero(y >= 800), 4)
             self.assertTrue(mask.ravel()[indices].all())

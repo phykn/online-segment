@@ -50,22 +50,5 @@ class PredResponse(BaseModel):
     particles: list[dict]
 
 
-class ExportRequest(BaseModel):
-    mask: Mask
-    width: int = Field(gt=0)
-    height: int = Field(gt=0)
-
-
-class ExportFile(BaseModel):
-    name: str = Field(min_length=1)
-    mask: Mask
-
-
-class ExportArchiveRequest(BaseModel):
-    files: list[ExportFile] = Field(min_length=1)
-    width: int = Field(gt=0)
-    height: int = Field(gt=0)
-
-
 class ExportJobRequest(BaseModel):
     total: int = Field(gt=0)

@@ -33,34 +33,6 @@ def make_png(mask: np.ndarray, width: int, height: int) -> bytes:
     return output.getvalue()
 
 
-def make_mask_archive(
-    files: list[tuple[str, np.ndarray]],
-    width: int,
-    height: int,
-) -> bytes:
-    output = BytesIO()
-    used = set()
-    with ZipFile(output, "w", ZIP_STORED) as archive:
-        for name, mask in files:
-            archive.writestr(
-                unique_png_name(name, used),
-                make_png(mask, width, height),
-            )
-    return output.getvalue()
-
-
-def unique_png_name(name: str, used: set[str]) -> str:
-    path = Path(name.replace("\\", "/")).name
-    stem = Path(path).stem or "mask"
-    value = f"{stem}.png"
-    number = 2
-    while value.lower() in used:
-        value = f"{stem}_{number}.png"
-        number += 1
-    used.add(value.lower())
-    return value
-
-
 def append_pair(archive: ZipFile, name: str, image: np.ndarray, mask: np.ndarray) -> None:
     stem = Path(Path(name.replace('\\', '/')).name).stem or 'image'
     used = {value.lower() for value in archive.namelist()}
