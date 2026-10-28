@@ -69,7 +69,7 @@ The seeds come from brightness, so particle/pore/binder favour brightness featur
 
 | Sample | Classes | Built with |
 |---|---|---|
-| 1 | particle, pore, crack, binder | `make_truth.py`; 97 % agreement with truth v2 on pixels both score |
+| 1 | particle (white), pore (black), crack (red); gray unscored | `make_truth.py`, then binder merged into pore |
 | 2 | particle, pore, crack, binder | `make_truth.py --scale .5 --split`: smaller particles, and dark gaps on watershed lines between touching particles are pore |
 | 3 | large, small, background | `make_size_truth.py`, size rule (same as `eval/truth/sample3_size_mask.png`) |
 | 4 | particle, pore, crack | `make_sample4_truth.py`: polished graphite sections; surfaces below the section plane, marked by hand boxes, are pore |
