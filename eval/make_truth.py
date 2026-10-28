@@ -7,7 +7,11 @@ DINO features against it are optimistic; review the overlay before trusting them
 
 Values: 0 particle, 1 pore, 2 crack, 3 binder, 255 ignored. Run with backend/.venv python:
     python eval/make_truth.py frontend/asset/sample1.png eval/truth/sample1
+    python eval/make_truth.py frontend/asset/sample2.png frontend/asset/sample2 --scale .5 --split
+`--scale` shrinks the rules' pixel lengths for smaller particles. `--split` is for tightly packed
+particles: dark gaps on watershed lines between particles become pore instead of crack.
 """
+import argparse
 import sys
 from pathlib import Path
 
@@ -19,9 +23,11 @@ from scipy import ndimage as ndi
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 from src.config import config  # noqa: E402
 from src.segment.model import Segmenter  # noqa: E402
+from make_size_truth import reconstruct  # noqa: E402
 
 PARTICLE, PORE, CRACK, BINDER, IGNORE = 0, 1, 2, 3, 255
 COLORS = np.array([[239, 71, 111], [17, 138, 178], [255, 214, 10], [142, 93, 231]], np.uint8)
+LENGTHS = ('close', 'grain', 'seal', 'depth', 'window', 'margin', 'min_crack')
 CONFIG = dict(sigma=.7, close=3, grain=8, seal=5, depth=6, window=8, solid=.8, contrast=12, flat=6, gap=20, packed=.4, sure=.5, min_crack=8, margin=3, mixed=1)
 
 
@@ -73,13 +79,25 @@ def seeds(smooth, cfg):
     mask[out & (smooth < dark-10)] = PORE
     mask[out & packed & near & (smooth < edge-cfg['gap'])] = PORE
     mask[crack] = CRACK
-    return mask, bright & ~deep, edge, dark
+    return mask, bright & ~deep, deep, edge, dark
 
 
-def segment(img, cfg):
+def split(img, mask, smooth, edge, dark):
+    """Turn cracks that run along watershed lines between touching particles into pore."""
+    dist = cv2.GaussianBlur(cv2.distanceTransform((smooth > edge).astype(np.uint8), cv2.DIST_L2, 5), (0, 0), 1)
+    peaks = (dist - reconstruct(dist-2, dist) > 1.99) & (dist > 3)
+    markers, count = ndi.label(cv2.dilate(peaks.astype(np.uint8), disk(1)))
+    markers[(mask == BINDER) | ((mask == PORE) & (smooth < dark))] = count+1
+    regions = cv2.watershed(cv2.GaussianBlur(img, (0, 0), 1)[..., ::-1].copy(), markers.astype(np.int32))
+    lines = cv2.dilate((regions == -1).astype(np.uint8), np.ones((3, 3), np.uint8)).astype(np.float32)
+    lab, count = ndi.label(mask == CRACK, structure=np.ones((3, 3)))
+    mask[np.isin(lab, 1+np.flatnonzero(ndi.mean(lines, lab, range(1, count+1)) > .5))] = PORE
+
+
+def segment(img, cfg, gaps=False):
     gray = img.astype(np.float32) @ np.array([.2126, .7152, .0722], np.float32)
     smooth = cv2.GaussianBlur(gray, (0, 0), cfg['sigma'])
-    seed, outer, edge, dark = seeds(smooth, cfg)
+    seed, outer, deep, edge, dark = seeds(smooth, cfg)
 
     seg = Segmenter()
     seg.fit([(img, seed, 1.)])
@@ -90,12 +108,17 @@ def segment(img, cfg):
     mask = model.classes_[probs.argmax(-1)].astype(np.uint8)
     mask[seed >= 0] = seed[seed >= 0]
     mask[(probs.max(-1) < cfg['sure']) & (seed < 0)] = IGNORE
+    # Cracks are damage inside solid particles. Dark gaps the fill calls crack elsewhere lie
+    # between grains of agglomerates or touching particles, which are pore.
+    mask[(mask == CRACK) & ~cv2.dilate(deep.astype(np.uint8), disk(cfg['margin'])).astype(bool)] = PORE
     # Isolated crack specks are texture, not damage; leave them unscored.
     lab, count = ndi.label(mask == CRACK, structure=np.ones((3, 3)))
     mask[np.isin(lab, 1+np.flatnonzero(ndi.sum(mask == CRACK, lab, range(1, count+1)) < cfg['min_crack']))] = IGNORE
     # The one-pixel rim where a particle outline meets binder/pore mixes both; it is not scored.
     rim = cv2.morphologyEx(outer.astype(np.uint8), cv2.MORPH_GRADIENT, disk(cfg['mixed'])).astype(bool)
     mask[rim & (mask != CRACK) & (np.abs(smooth-edge) < (edge-dark)/4)] = IGNORE
+    if gaps:
+        split(img, mask, smooth, edge, dark)
     return mask, seed, dict(edge=round(float(edge), 1), dark=round(float(dark), 1))
 
 
@@ -108,10 +131,11 @@ def overlay(gray, mask):
     return rgb.astype(np.uint8)
 
 
-def main(src, dst):
+def main(src, dst, scale=1., gaps=False):
     config.feature.kind, config.feature.cellpose = 'dino', 'none'
     img = np.asarray(Image.open(src).convert('RGB'))
-    mask, seed, cuts = segment(img, CONFIG)
+    cfg = {k: max(1, int(round(v*scale))) if k in LENGTHS else v for k, v in CONFIG.items()}
+    mask, seed, cuts = segment(img, cfg, gaps)
     dst = Path(dst)
     dst.parent.mkdir(parents=True, exist_ok=True)
     out = Image.fromarray(mask, 'P')
@@ -126,4 +150,10 @@ def main(src, dst):
 
 
 if __name__ == '__main__':
-    main(*sys.argv[1:3])
+    parser = argparse.ArgumentParser()
+    parser.add_argument('src')
+    parser.add_argument('dst')
+    parser.add_argument('--scale', type=float, default=1.)
+    parser.add_argument('--split', action='store_true')
+    args = parser.parse_args()
+    main(args.src, args.dst, args.scale, args.split)
