@@ -112,4 +112,5 @@ def line_score(img, L=9, off=2.5, n=16):
 - **Crack = dark inside the outline:** close the particle mask (r 2), fill holes, then take pixels darker than 40 or with black-hat above 18, at least 1.5 px inside. A closing of r 3 sealed real gaps between stacked sections.
 - **Not a crack:** dark pieces wider than 7 px (pockets between sections) and pieces that touch the outline along 40% or more of their length (gaps between sections) are pore.
 - **Behind the section plane:** surfaces seen through pores and fluffy binder are as bright as sections. Rules cannot tell them apart; hand boxes did, plus per-box brightness splits where a box held both.
+- **Thinning cracks to 1 px:** remove crack pixels brightest first while they are simple points (8-connected crack stays one piece, background stays 4-connected) and not line ends; repeat until stable. Then drop spurs under 5 px that run from a junction to a free end, and lines under 4 px. Crack area went from 67,278 to 15,660 px and the lines follow the darkest middle of each slit. A closing-depth rule (as in sample2) did not work here: it hollowed out wide slits instead of thinning them.
 
