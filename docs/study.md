@@ -86,3 +86,11 @@ def line_score(img, L=9, off=2.5, n=16):
 - **Neck split, did not work:** pair convexity defects of a piece outline, cut along the darkest path between them, and keep the cut when its contrast is high. It mostly cut inside grain clusters or along cracks, even after rejecting paths that are more than 30% crack. The large merges here are big particles touching grain clusters, with a long contact rather than a neck.
 - **Main problem:** big particles merged with the grain clusters that touch them. Hand cuts along the darkest path fixed these. Two of the 12 ran through uniform particle and were rejected at the seam check.
 - **Seam check:** 25 of the 48 faintest seams (contrast below about 27) were joined again. The rest were real gaps, mostly between grains inside clusters.
+
+## Sample3: large / small / pore without cracks
+- **Uneven background:** the background darkens from about 61 at the top to 32 at the bottom. A 5th-percentile filter on a quarter-size image (window 15, so about 60 px at full size), then blurred, is a good background estimate. Thresholding `level − background > 18` gave clean outlines everywhere. A plain Otsu threshold (80) dropped the dark lower rows and broke particles into fragments.
+- **Size before cutting fails:** an opening (radius 8) of the raw foreground turns dense clusters of small grains into "large" bodies.
+- **Cut seams first:** cutting dark seams with the line filter first fixes this. Use strong pixels (score > 24) that reach pore, plus weak pixels (> 12) joined to them. A radius-7 opening then keeps only real large particles. Grow those back 4 px geodesically, inside the uncut foreground.
+- **Inscribed radii form two groups:** about 3–6 px for small grains and 9–20 px for large particles. Radius 7 sits in the gap between them and caught the mid-size round particles that radius 8 missed.
+- **Did not work:** joining small pieces with a long contact to a large particle swallowed whole grain clusters. Regrowing large particles through low-score pixels added only rim pixels.
+- **Remaining error:** the shaded side faces of large particles, which a seam separates from the lit top, come out small. Three were fixed by hand.
