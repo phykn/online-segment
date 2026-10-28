@@ -65,11 +65,11 @@ Scale 8 at the default width of 768 px stores about 110 MiB of tokens per image.
 
 The seeds come from brightness, so particle/pore/binder favour brightness features; the DINO fill favours DINO on faint cracks. Review the overlay in the app before trusting the numbers.
 
-`frontend/asset/sampleN_mask.png` (with `_overlay.png`) are answer keys for all four samples in the app's export format, built with the size-channel pipeline:
+`frontend/asset/sampleN_mask.png` are answer keys for all four samples in the app's export format, built with the size-channel pipeline:
 
 | Sample | Classes | Built with |
 |---|---|---|
-| 1 | particle, pore, crack, binder | `make_truth.py`; 97 % agreement with truth v2 on pixels both score |
+| 1 | particle, pore, binder | `make_truth.py`, then crack merged into pore after review (the lines inside particles count as pore) |
 | 2 | particle, pore, crack, binder | `make_truth.py --scale .5 --split`: smaller particles, and dark gaps on watershed lines between touching particles are pore |
 | 3 | large, small, background | `make_size_truth.py`, size rule (same as `eval/truth/sample3_size_mask.png`) |
 | 4 | particle, pore, crack | `make_sample4_truth.py`: polished graphite sections; surfaces below the section plane, marked by hand boxes, are pore |
