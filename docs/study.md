@@ -106,3 +106,10 @@ def line_score(img, L=9, off=2.5, n=16):
 - **When a hand cut fails:** print the id map as text around it (one letter per particle, `.` for pore). The bridge was usually a few pixels away from where it looked in the zoom, and both cut ends must sit in pore.
 - **Size class:** inscribed radius after the cut separates the classes well, but 66 small pieces had radius 6.5 or more. Most were unsplit grain clusters; four were single large plates and became large. Four tiny "large" pieces from cuts became small.
 
+## Sample4: polished sections, pore and cracks inside
+- **Start from the seeded key:** `make_sample4_truth.py` leaves 17% unscored, mostly the bright rims of sections and the band between section and pore.
+- **Rims:** pixels brighter than 105 within 4 px of a section, grown twice, belong to that section. Without this every section gets a dark-blue halo of pore.
+- **Crack = dark inside the outline:** close the particle mask (r 2), fill holes, then take pixels darker than 40 or with black-hat above 18, at least 1.5 px inside. A closing of r 3 sealed real gaps between stacked sections.
+- **Not a crack:** dark pieces wider than 7 px (pockets between sections) and pieces that touch the outline along 40% or more of their length (gaps between sections) are pore.
+- **Behind the section plane:** surfaces seen through pores and fluffy binder are as bright as sections. Rules cannot tell them apart; hand boxes did, plus per-box brightness splits where a box held both.
+
