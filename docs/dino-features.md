@@ -69,7 +69,7 @@ The seeds come from brightness, so particle/pore/binder favour brightness featur
 
 | Sample | Classes | Built with |
 |---|---|---|
-| 1 | particle (white), pore (black), crack (red); every pixel scored | `make_truth.py`, then binder merged into pore; unscored specks under 30 px take their nearest label, wider unscored areas split at the particle edge level (141.5). Cracks are then thinned to pixels at least 12 gray levels darker than a 5 px closing of the image; crack lines lying mostly along pore are pore |
+| 1 | particle (white), pore (black), crack (red); every pixel scored | `make_truth.py`, then binder merged into pore; unscored specks under 30 px take their nearest label, wider unscored areas split at the particle edge level (141.5). Cracks are then thinned to pixels at least 12 gray levels darker than a 5 px closing of the image; crack lines lying mostly along pore are pore. Thin pore (half-width ≤ 2.5 px) more than 3 px inside a particle outline (4 px closing) is crack |
 | 2 | particle, pore, crack, binder | `make_truth.py --scale .5 --split`: smaller particles, and dark gaps on watershed lines between touching particles are pore |
 | 3 | large, small, background | `make_size_truth.py`, size rule (same as `eval/truth/sample3_size_mask.png`) |
 | 4 | particle, pore, crack | `make_sample4_truth.py`: polished graphite sections; surfaces below the section plane, marked by hand boxes, are pore |
