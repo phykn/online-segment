@@ -79,3 +79,10 @@ def line_score(img, L=9, off=2.5, n=16):
 - **Method:** for every pair of pieces, take the seam pixels the cut added between them. Contrast = median smoothed level of the two pieces within 3 px of the seam minus median level on the seam. Sort the seams by contrast and vet them in contact sheets, faintest first.
 - **Result:** of the 120 faintest seams (contrast below about 16), 49 showed no visible gap and were joined again. That took the piece count from 258 to 200. Seams with contrast above 16 were almost all real.
 - **For automation:** a contrast threshold of about 10–12 would catch most false splits. Long straight hand cuts through uniform grey were the worst offenders. A darkest path always exists, even where there is no gap.
+
+## Sample1 with the sample2 tools
+- **Scaling:** sample1 has particles at ≈ 210 and pore at ≈ 77, against sample2's 149 and 70. All grey-level thresholds (line score, level limits, seam contrast) were scaled by the contrast ratio 133/79 ≈ 1.68. With that, a seam contrast of about 27 matched sample2's 16.
+- **Cracks count as particle for connectivity:** sample1 has dense crack networks. Without this, cracks split particles into fragments and every check (pruning, crumbs, piece counts) goes wrong.
+- **Neck split, did not work:** pair convexity defects of a piece outline, cut along the darkest path between them, and keep the cut when its contrast is high. It mostly cut inside grain clusters or along cracks, even after rejecting paths that are more than 30% crack. The large merges here are big particles touching grain clusters, with a long contact rather than a neck.
+- **Main problem:** big particles merged with the grain clusters that touch them. Hand cuts along the darkest path fixed these. Two of the 12 ran through uniform particle and were rejected at the seam check.
+- **Seam check:** 25 of the 48 faintest seams (contrast below about 27) were joined again. The rest were real gaps, mostly between grains inside clusters.
