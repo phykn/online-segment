@@ -69,3 +69,7 @@ def line_score(img, L=9, off=2.5, n=16):
 - **Custom priority-flood watershed on black-hat, judged by median black-hat along each boundary:** at a threshold of 7 most cuts crossed uniform particle; at 10 almost none survived. There is no usable middle.
 - **Opening-based bodies and edge bands** for telling gaps between particles from cracks.
 - **Black-hat (closing − image) as a gap detector:** with a "touches pore" filter the gaps come out blobby and too wide in textured areas.
+
+## Thin gaps and cracks inside particles (sample2, second pass)
+- **Gap thinning (worked):** visit the pixels the gap cut added, brightest first. Give one back to particle when its 4-neighbours touch exactly one particle piece, so returning it joins nothing new. Repeat until stable. The gaps become the darkest 1 px separating line, and the number of pieces stays the same (7,299 px went down to 1,853).
+- **Cracks inside particles:** take particle pixels with line score > 9, smoothed level < 138, at least 2 px inside the outline. Keep components whose length (4·√ev_max) is 6 px or more. Pore that is enclosed by one particle piece, or that is a thin line touching only one piece, counts as well. Hand vetting kept 27 of 59 candidates. The rejects were image-edge artefacts, notches at an outline and faint specks, so a stricter score (12–14) alone would miss real cracks.
