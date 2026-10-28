@@ -47,6 +47,19 @@ Width 768, three label seeds each, RF settings unchanged:
 
 Visually, the previous features mark gaps in fine-grain agglomerates as cracks; the DINO features keep cracks inside particles. The remaining pore error with strokes comes from small bright grains in agglomerates that strokes rarely cover.
 
+### Classifier
+
+With these features fixed, ExtraTrees (same settings as the previous RF: 200 trees, depth 10, leaf 2, sqrt, balanced) replaced the RF. Width 768, three seeds, crack F1 (2 px):
+
+| Labels | RF | ExtraTrees |
+|---|---:|---:|
+| 10 strokes | 0.245 | 0.377 |
+| 30 strokes | 0.460 | 0.697 |
+| 10 clicks | 0.381 | 0.347 |
+| 30 clicks | 0.664 | 0.750 |
+
+Particle and pore IoU also rose with strokes (30 strokes: 0.897/0.790 → 0.940/0.857). Logistic regression, ridge, MLP and HistGradientBoosting were all worse than both tree ensembles: brush strokes yield only a few hundred spatially sampled pixels per class. Intermediate DINO layers (8, 5) and a 4-way sub-token shift ensemble were also tried; layers lowered crack F1 and the shift ensemble added under 0.03 for four times the encoding cost.
+
 Timing on an Apple M-series GPU (MPS), sample1 at width 768: first prediction including model load 11.9 s, label edit with cached tokens 1.6 s.
 
 ## Limits
