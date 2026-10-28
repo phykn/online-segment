@@ -15,7 +15,10 @@ Tiles of `dino.tile` px overlap by `dino.overlap` px and are blended with a line
 
 ### Positional artifacts
 
-At scales 4 and above a 512 px tile shows a small, nearly uniform patch of the original image, so DINO's tokens mostly encode where they sit in the tile. The PCA maps of those levels were dominated by stripes and checkerboards on the tile grid rather than particles and cracks. The pattern is the same in every tile, so `dino.debias` averages each in-tile position over all tiles and subtracts that mean before blending (the idea behind Denoising Vision Transformers). It needs at least 8 tiles; with fewer, the mean is mostly image content and the level is left as is. After debiasing, the scale-8 level shows particles, agglomerates, binder and the cracks inside particles, and DINO alone (no image channels, 30 clicks) rose from mIoU 0.391 to 0.471.
+At scales 4 and above a 512 px tile shows a small, nearly uniform patch of the original image, so DINO's tokens mostly encode where they sit in the tile. The PCA maps of those levels were dominated by stripes and checkerboards on the tile grid rather than particles and cracks. The pattern is the same in every tile, so `dino.debias` averages each in-tile position over all tiles and subtracts that mean before blending (the idea behind Denoising Vision Transformers). It needs at least 8 tiles; with fewer, the mean is mostly image content and the level is left as is.
+
+![SEM image, scale-8 DINO PCA before and after debiasing](dino-debias.jpg)
+ After debiasing, the scale-8 level shows particles, agglomerates, binder and the cracks inside particles, and DINO alone (no image channels, 30 clicks) rose from mIoU 0.391 to 0.471.
 
 ### Image-only trees
 
