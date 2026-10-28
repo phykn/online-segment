@@ -19,8 +19,9 @@ class Classifier:
         model = None
         if len(self.classes) >= 2:
             # Random split thresholds generalise better than RF from a few brush strokes on DINO features.
+            # Trying 30% of features per split lets the few brightness channels compete with DINO dims.
             model = ExtraTreesClassifier(n_estimators=200, max_depth=10,
-                min_samples_leaf=2, max_features='sqrt', class_weight='balanced',
+                min_samples_leaf=2, max_features=.3, class_weight='balanced',
                 random_state=0, n_jobs=-1)
             model.fit(np.concatenate([x for x, _ in selected]), np.concatenate([y for _, y in selected]))
         self.model = model

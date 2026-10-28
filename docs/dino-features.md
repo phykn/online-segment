@@ -51,7 +51,7 @@ Truth v2, native width 1024, seed 0, 30 labels per class:
 | | DINO PCA32 + 4 pixel channels | 0.806 | 0.314 | 0.376 | 0.818 | 0.824 |
 | | DINO PCA8 + 16 image channels | 0.881 | 0.413 | 0.552 | 0.844 | 0.887 |
 
-The default is the last row. It is best on crack and particle; the image-only RF still separates pore and binder better. Downscaling to width 768 thins the cracks and lowered every DINO variant, so evaluate at native width.
+The default is the last row, with ExtraTrees `max_features=0.3` instead of `sqrt`; that raised mIoU by 0.006–0.017 over two seeds (clicks 0.746 → 0.763, strokes 0.628 → 0.644 on seed 1). It is best on crack and particle; the image-only RF still separates pore and binder better. Downscaling to width 768 thins the cracks and lowered every DINO variant, so evaluate at native width.
 
 On the earlier three-class truth (v1, few dark cracks only), the PCA8 + image channel variant was worse with strokes (crack F1 0.70 → 0.19). That truth missed most faint cracks, so v2 is the reference; this disagreement is the main reason to check results on your own images.
 
@@ -75,4 +75,5 @@ Timing on an Apple M-series GPU (MPS), sample1 at width 768: first prediction in
 - One image and an automatically built truth that DINO helped fill; no other material or modality has been tested yet.
 - CPDINO-based features and Cellpose context were not compared, because the CPDINO checkpoint was a Git LFS pointer in this workspace.
 - Image-only features remain better for pore vs binder.
-- `channels: enhanced` was better with 30–100 clicks and worse with 10, so `rgb` stays the default.
+- `channels: enhanced` was worse than `rgb` on truth v2, so `rgb` stays the default.
+- Pore and binder are told apart by brightness alone in truth v2, so no feature beats a brightness channel there.

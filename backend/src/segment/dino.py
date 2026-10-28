@@ -26,7 +26,7 @@ def channels(image, mode):
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     contrast = gray - cv2.GaussianBlur(gray, (0, 0), 8)
     tophat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
-    return np.stack([gray, stretch(contrast), stretch(tophat)], -1)
+    return np.stack([gray, stretch(contrast), stretch(tophat)], -1).astype(np.float32)
 
 
 def stretch(value):
