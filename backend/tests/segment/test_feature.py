@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from src.segment.cache import Cache
 from src.segment.encoder import Tokens
-from src.segment.feature import image_features, luminance
+from src.segment.feature import image_features, luminance, size_features
 
 
 class FeatureTests(unittest.TestCase):
@@ -53,6 +53,22 @@ class FeatureTests(unittest.TestCase):
             features = image_features(np.zeros(shape, np.uint8))
             self.assertEqual(features.shape, (*shape[:2], 16))
             self.assertTrue(np.isfinite(features).all())
+            size = size_features(np.zeros(shape, np.uint8))
+            self.assertEqual(size.shape, (*shape[:2], 7))
+            self.assertTrue(np.isfinite(size).all())
+
+    def test_size_channels_keep_a_large_particle_bright_to_its_rim(self):
+        image = np.zeros((128, 128, 3), np.uint8)
+        cv2.circle(image, (40, 64), 24, (200, 200, 200), -1)
+        for y in (24, 64, 104):
+            cv2.circle(image, (104, y), 5, (200, 200, 200), -1)
+        size, gray = size_features(image), luminance(image)
+        bright, dark = gray[64, 40], gray[0, 0]
+        # Widest disk (radius 8 at this image size): the big particle's rim, 2 px inside its edge,
+        # keeps its brightness, while a grain of radius 5 sinks to the background.
+        self.assertLess(abs(size[64, 18, -1] - bright), .1*(bright-dark))
+        self.assertLess(abs(size[64, 104, -1] - dark), .1*(bright-dark))
+        self.assertLess(abs(size[64, 104, 0] - bright), .1*(bright-dark))
 
     def test_small_images_keep_distinct_filter_scales(self):
         image = np.random.default_rng(0).integers(0, 256, (128, 128, 3), dtype=np.uint8)

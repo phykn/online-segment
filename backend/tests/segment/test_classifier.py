@@ -46,12 +46,23 @@ class ClassifierTests(unittest.TestCase):
         rng = np.random.default_rng(0)
         y = np.repeat([0, 1, 2], 60).astype(np.int8)
         x = np.concatenate([y[:, None] + rng.normal(0, .1, (180, 2)), rng.normal(size=(180, 6))], 1).astype(np.float32)
+        used = lambda trees: np.unique(np.concatenate([tree.tree_.feature[tree.tree_.feature >= 0] for tree in trees]))
         classifier = Classifier()
         classifier.fit([(x, y)], local=2)
         trees = classifier.model.estimators_
         self.assertEqual(len(trees), 200)
-        self.assertFalse(any((tree.tree_.feature >= 2).any() for tree in trees[100:]))
-        self.assertTrue(any((tree.tree_.feature >= 2).any() for tree in trees[:100]))
+        self.assertFalse((used(trees[100:]) >= 2).any())
+        self.assertTrue((used(trees[:100]) >= 2).any())
+        np.testing.assert_array_equal(classifier.model.predict(x), y)
+        # With size channels in columns 2-3, token trees never see them and the size half (best
+        # split thresholds, not random ones) never sees the tokens after them.
+        classifier.fit([(x, y)], local=2, size=2)
+        trees = classifier.model.estimators_
+        self.assertEqual(len(trees), 200)
+        self.assertFalse(np.isin(used(trees[:100]), [2, 3]).any())
+        self.assertTrue((used(trees[:100]) >= 4).any())
+        self.assertFalse((used(trees[100:]) >= 4).any())
+        self.assertEqual({type(tree).__name__ for tree in trees}, {'ExtraTreeClassifier', 'DecisionTreeClassifier'})
         np.testing.assert_array_equal(classifier.model.predict(x), y)
         classifier.fit([(x, y)])
         self.assertEqual(len(classifier.model.estimators_), 200)

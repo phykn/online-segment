@@ -39,7 +39,7 @@ class ModelTests(unittest.TestCase):
             model.configure(None)
             model.propose(image)
             model.fit([(image, edits)])
-            self.assertEqual(model.classifier.model.n_features_in_, 96)
+            self.assertEqual(model.classifier.model.n_features_in_, 103)
             pca = model.pca
             model.fit([(image, 1-edits)])
             model.features.clear()
@@ -66,7 +66,7 @@ class ModelTests(unittest.TestCase):
             run.side_effect = lambda *args, **kw: (masks, logits, None, endpoints if kw['flow'] else None)
             model.configure(None)
             model.fit([(image, labels)])
-            self.assertEqual(model.classifier.model.n_features_in_, 32)
+            self.assertEqual(model.classifier.model.n_features_in_, 39)
             model.pca = object()
             with patch.object(config.feature, 'flow', False):
                 model.configure(None)
@@ -74,7 +74,7 @@ class ModelTests(unittest.TestCase):
                 self.assertIsNone(model.classifier.model)
                 self.assertEqual(model.features.size, 0)
                 model.fit([(image, labels)])
-                self.assertEqual(model.classifier.model.n_features_in_, 29)
+                self.assertEqual(model.classifier.model.n_features_in_, 36)
                 self.assertFalse(run.call_args.kwargs['flow'])
 
     def test_failed_feature_is_not_cached(self):
@@ -90,7 +90,7 @@ class ModelTests(unittest.TestCase):
         with patch.object(config.feature, 'kind', 'image'), patch.object(config.feature, 'texture', False):
             model.configure(None)
             model.fit([(image, labels)])
-            self.assertEqual(model.classifier.model.n_features_in_, 16)
+            self.assertEqual(model.classifier.model.n_features_in_, 23)
             model.pca = object()
             with patch.object(config.feature, 'texture', True):
                 model.configure(None)
@@ -98,7 +98,7 @@ class ModelTests(unittest.TestCase):
                 self.assertIsNone(model.classifier.model)
                 self.assertEqual(model.features.size, 0)
                 model.fit([(image, labels)])
-                self.assertEqual(model.classifier.model.n_features_in_, 19)
+                self.assertEqual(model.classifier.model.n_features_in_, 26)
                 np.testing.assert_array_equal(next(iter(model.training.values()))[1], labels)
 
     def test_pca_is_shared_frozen_and_resets_with_configuration(self):

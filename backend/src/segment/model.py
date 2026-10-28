@@ -8,7 +8,7 @@ from src.segment.runtime import runtime
 from src.segment.dino import encoder as dino
 from src.segment.classifier import Classifier
 from src.segment.cache import Cache
-from src.segment.feature import Features, image_features
+from src.segment.feature import Features, image_features, size_features
 from src.segment.sample import quotas, spatial
 from src.segment.context import extract as extract_context
 
@@ -105,16 +105,17 @@ class Segmenter:
             return found
         report = progress or self.report
         report(stage='features', done=0, total=1)
-        local = None
+        local = size = None
         if config.feature.kind != 'encoder':
             local = image_features(image, config.feature.texture)
+            size = size_features(image)
         tokens = None
         if config.feature.kind != 'image':
             if self.pca is None:
                 raise ValueError('PCA must be fitted with training images first.')
             tokens = self.tokens(image, report).project(self.pca)
         context = self.context(image, report) if config.feature.cellpose != 'none' else None
-        return self.features.put(key, Features(image.shape[:2], local, tokens, context, scale, config.feature.cellpose))
+        return self.features.put(key, Features(image.shape[:2], local, tokens, context, scale, config.feature.cellpose, size))
 
     def fit(self, records):
         records = [(item[0], item[1], item[2] if len(item) > 2 else 1.) for item in records if np.any(item[1] >= 0)]
@@ -124,20 +125,22 @@ class Segmenter:
             self.prepare_pca(records)
         limits = [quotas(values, 10000) for values in counts]
         samples = []
-        local = 0
+        local = size = 0
         for i, (image, mask, scale) in enumerate(records):
             indices = np.concatenate([spatial(mask == label, limits[label][i]) for label in range(4)])
             values = np.empty((len(indices), 0), np.float32)
             if can_train:
                 features = self.feature(image, scale=scale)
                 values = features.pixels(indices)
-                # Image channels lead the feature columns; with encoder tokens beside them the
-                # classifier also grows trees on the image channels alone.
-                local = features.local.shape[-1] if features.local is not None and features.tokens is not None else 0
+                # Image channels lead the feature columns, then size channels; the classifier
+                # splits its trees between them and whatever follows (encoder tokens, context).
+                if features.local is not None:
+                    local = features.local.shape[-1]
+                    size = features.size.shape[-1] if features.size is not None else 0
             samples.append((values, mask.ravel()[indices]))
         self.report(stage='training', done=0, total=1)
         classifier = Classifier()
-        classifier.fit(samples, local)
+        classifier.fit(samples, local, size)
         self.classifier = classifier
         self.training = {(self.key(image), scale): (image, mask.copy(), scale) for image, mask, scale in records}
 

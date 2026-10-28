@@ -1,6 +1,6 @@
 # DINOv3 multi-scale RF features
 
-2026-10-28. The default RF input is now frozen DINOv3 ViT-B/16 tokens at several input magnifications, with the tiling artifact removed, plus the 16 image channels of the previous RF. Cellpose context is off by default (`feature.cellpose: none`); CPDINO is still used for **Find regions**.
+2026-10-28. The default RF input is now frozen DINOv3 ViT-B/16 tokens at several input magnifications, with the tiling artifact removed, plus the 16 image channels of the previous RF and 7 size channels. Cellpose context is off by default (`feature.cellpose: none`); CPDINO is still used for **Find regions**.
 
 ## Why
 
@@ -23,6 +23,21 @@ At scales 4 and above a 512 px tile shows a small, nearly uniform patch of the o
 ### Image-only trees
 
 With few labels, 24 DINO dims gave the trees many noisy splits, and DINO features scored below the image-only RF. Half of the 200 trees are now grown on the image channels alone (the token columns are zeroed, and constant columns are never split on) and merged into one forest, so prediction costs the same. Averaging the two halves never fell below the image-only RF on average and kept DINO's gain with more labels. The FSSDINO class prototypes and Gram maps were tried as RF channels and dropped: with 10 clicks per class they collapsed (crack F1 ≈ 0.05), and with dense labels they leaked training labels into features.
+
+### Size channels
+
+On `frontend/asset/sample3.png`, large particles among many small grains, labels inside the particles separated the two sizes, but every large particle came back with a rim predicted small. A rim has the brightness, gradients and 2–8 px DINO tokens of a small grain, so no local feature tells them apart, and more labels did not help: they sit inside particles, away from the rims.
+
+Seven size channels describe what fits inside a structure instead of its edges. Each is a grayscale opening of the luminance, smoothed with σ = `base`, by a disk of radius `round(base·2^(1+i/2))`, i = 0…6, where `base = clip(min(H, W)/512, 0.5, 8)` (radii 3–23 px on sample3). Where a disk fits inside a bright structure, its pixels keep about their own brightness out to the rim; smaller structures drop to their surroundings. A large particle's rim thus keeps its particle's size channels, while a small grain loses the wide ones. The count stays 7 at every image size, so features of differently sized images stack. They take 0.2 s at 768 px.
+
+The image-only half of the forest now grows on the image and size channels; the other half keeps the image channels and DINO tokens (with `feature.kind: image`, the image channels alone). Size channels in the token trees lowered the sample1 four-class mIoU by 0.006–0.017. The size half is a RandomForest with best-split thresholds (`max_features=0.3`, no bootstrap) rather than ExtraTrees: one best cut between the labelled sizes keeps rims with their particle, whereas random cuts left mixed nodes that the edge channels finished, and there a large particle's rim again looked like a small grain. At the app's limit of 10 000 labelled pixels per class it fits in 0.5–0.7 s, against 0.1 s for the ExtraTrees half.
+
+Rejected:
+
+- Smoothing class probabilities or DINO features with an edge-preserving domain transform, also restricted to the foreground: it leaked across touching small grains.
+- Opening-by-reconstruction profiles: they leaked along bright paths between touching particles.
+- Top-hats, closings, openings of a σ = 3 image, and dividing each opening by the fraction that survives it.
+- Bootstrapped size trees with √n features per split fit 3× faster but left more rim errors (sample3 rim error 0.10 vs 0.06, mIoU 0.939 vs 0.949). Capping their training pixels per class lowered sample1 with dense labels (mIoU 0.780 → 0.770 at 2 000 per class).
 
 ## Configuration
 
@@ -100,6 +115,46 @@ Tried without gain: more labelled pixels per class, deeper trees, other class we
 
 On the earlier three-class truth (v1, few dark cracks only), the PCA8 + image channel variant was worse with strokes (crack F1 0.70 → 0.19). That truth missed most faint cracks, so v2 is the reference; this disagreement is the main reason to check results on your own images.
 
+### Large and small particles
+
+`eval/make_size_truth.py` builds two three-class truths for `frontend/asset/sample3.png` (large, small, background; 255 unscored) from an Otsu foreground:
+
+- **size**: large where a disk of radius 10 px fits inside the particle, small where not even radius 7 px fits. Sizes in between, particle edges and small grains touching larger particles are unscored.
+- **area**: a marker watershed splits touching particles, and each is labelled whole, rim included, by its equivalent diameter (large ≥ 26 px, small ≤ 18 px).
+
+The size rule uses openings, like the size channels, so it favours them. The area truth is the cross-check, with its own flaws: watershed misses leave some small grains merged into large particles, and a long, thin particle is large by area but small by width.
+
+`eval/evaluate_size.py` trains on the left half and scores the right half, like `evaluate.py`. Rim error is the share of large-particle pixels within 2 px of the large region's edge that are not predicted large. A wrong particle is a truth particle of at least 20 px, wholly in the right half, whose majority prediction is another class.
+
+Through the app's `Segmenter`, seeds 0–1, mean over clicks and strokes 5/10/30 (wrong particles summed over the 12 runs):
+
+| Truth | Features | Large | Small | Background | mIoU | Large → small | Small → large | Rim error | Wrong large/small |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| size | DINO (before) | 0.849 | 0.791 | 0.965 | 0.868 | 0.100 | 0.075 | 0.36 | 4/67 |
+| | DINO + size channels (default) | 0.967 | 0.918 | 0.962 | 0.949 | 0.015 | 0.024 | 0.06 | 1/39 |
+| | image (before) | 0.789 | 0.720 | 0.967 | 0.826 | 0.139 | 0.120 | 0.48 | 10/86 |
+| | image + size channels | 0.945 | 0.897 | 0.968 | 0.936 | 0.035 | 0.029 | 0.14 | 5/22 |
+| area | DINO (before) | 0.772 | 0.408 | 0.974 | 0.718 | 0.209 | 0.080 | 0.48 | 320/92 |
+| | DINO + size channels (default) | 0.820 | 0.471 | 0.976 | 0.756 | 0.166 | 0.056 | 0.35 | 353/66 |
+
+DINO on the size truth, mIoU per label setting:
+
+| Features | clicks 5 | 10 | 30 | strokes 5 | 10 | 30 |
+|---|---:|---:|---:|---:|---:|---:|
+| DINO (before) | 0.844 | 0.871 | 0.905 | 0.865 | 0.857 | 0.868 |
+| DINO + size channels | 0.925 | 0.943 | 0.970 | 0.948 | 0.949 | 0.959 |
+
+Before, more strokes did not help: rim error rose from 0.35 with 5 strokes to 0.53 with 30, because strokes stay inside particles. With size channels it stays at 0.06–0.10 with strokes and 0.02–0.05 with clicks.
+
+![Size truth, prediction before and with size channels on the right half of sample3](size-channels.jpg)
+Right half, 10 strokes per class. Before, every large particle had a rim predicted small; with size channels the rims stay large.
+
+The remaining errors are a few thin rims and small grains pressed against large particles; 25 of the 39 wrong small particles come from the 5-click runs, where the labels hardly mark where the size boundary lies. With dense labels (every scored left-half pixel, subsampled to the app's 10 000 per class) the same features reach mIoU 0.993 and rim error 0.01 on the size truth.
+
+On the area truth mIoU rose from 0.718 to 0.756 and rim error fell from 0.48 to 0.35, but wrong large particles rose from 320 to 353: elongated or lobed particles that are large by area are narrower than the size boundary, and the size channels call them small.
+
+On sample1's four-class truth (seeds 0–2, mean of the six label settings) nothing changed: DINO mIoU 0.676 → 0.675, crack IoU 0.468 → 0.478, crack F1 (2 px) 0.808 → 0.819; image-only 0.672 → 0.671.
+
 ### Classifier
 
 With DINO PCA32 + 4 pixel channels fixed and the v1 truth, ExtraTrees (same settings as the previous RF: 200 trees, depth 10, leaf 2, sqrt, balanced) replaced the RF. Width 768, three seeds, crack F1 (2 px):
@@ -122,3 +177,5 @@ Timing on an Apple M-series GPU (MPS), sample1 at width 768: first prediction in
 - Image-only features remain better for pore vs binder.
 - `channels: enhanced` was worse than `rgb` on truth v2, so `rgb` stays the default.
 - Pore and binder are told apart by brightness alone in truth v2, so no feature beats a brightness channel there.
+- Size channels describe bright structures: an opening removes what is brighter than its surroundings and narrower than the disk. Dark structures of different sizes, such as small and large pores, are not covered; closings were tried and did not help.
+- Large/small separation was measured on one image (sample3) against two automatic truths, and the size truth shares openings with the size channels.

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter, sobel, uniform_filter
 from src.segment.context import Context
@@ -45,6 +46,23 @@ def image_features(image, texture=False):
     return np.stack(values, axis=-1).astype(np.float32)
 
 
+def size_features(image):
+    """Grayscale openings by disks whose radius doubles every two channels. Wherever a disk fits
+    inside a bright structure, its pixels keep about their own brightness out to the rim; smaller
+    structures drop to their surroundings. Particles thus part by what fits inside them, not by
+    their edges, which look alike on a large particle's rim and on a small grain."""
+    gray = luminance(image)
+    base = np.clip(min(gray.shape) / 512, .5, 8)
+    smooth = gaussian_filter(gray, np.float32(base), mode='reflect')
+    values = []
+    # Seven channels at every image size, so features of differently sized images stack.
+    for step in range(7):
+        radius = max(1, int(round(base * 2**(1 + step/2))))
+        disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2*radius+1, 2*radius+1))
+        values.append(cv2.morphologyEx(smooth, cv2.MORPH_OPEN, disk))
+    return np.stack(values, axis=-1).astype(np.float32)
+
+
 @dataclass
 class Features:
     shape: tuple
@@ -53,15 +71,18 @@ class Features:
     context: Context | None = None
     scale: float = 1.
     context_mode: str = 'statistics'
+    size: np.ndarray | None = None
 
     @property
     def nbytes(self):
-        return sum(value.nbytes for value in (self.local, self.tokens, self.context) if value is not None)
+        return sum(value.nbytes for value in (self.local, self.size, self.tokens, self.context) if value is not None)
 
     def pixels(self, indices):
         values = []
         if self.local is not None:
             values.append(self.local.reshape(-1, self.local.shape[-1])[indices])
+        if self.size is not None:
+            values.append(self.size.reshape(-1, self.size.shape[-1])[indices])
         if self.tokens is not None:
             values.append(self.tokens.pixels(indices))
         if self.context is not None:

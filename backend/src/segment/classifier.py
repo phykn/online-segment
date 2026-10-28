@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier
 from src.segment.cuda_forest import make_predictor
 
 
@@ -10,6 +10,14 @@ def forest(trees):
                                 class_weight='balanced', random_state=0, n_jobs=-1)
 
 
+def shapes(trees):
+    # Labels sit inside particles, but a rim shares its particle's size channels. One best-split cut
+    # between the labelled sizes keeps rims with their particle; random cuts leave mixed nodes that
+    # edge channels finish, and there a large particle's rim looks like a small grain.
+    return RandomForestClassifier(n_estimators=trees, max_depth=10, min_samples_leaf=2, max_features=.3,
+                                  bootstrap=False, class_weight='balanced', random_state=0, n_jobs=-1)
+
+
 class Classifier:
     def __init__(self):
         self.model = None
@@ -18,7 +26,7 @@ class Classifier:
         self.counts = [0]*4
         self.classes = []
 
-    def fit(self, samples, local=0):
+    def fit(self, samples, local=0, size=0):
         selected = [(x, y) for x, y in samples if len(y)]
         self.count = sum(len(y) for _, y in selected)
         self.counts = [sum(int(np.count_nonzero(y == label)) for _, y in selected) for label in range(4)]
@@ -27,16 +35,21 @@ class Classifier:
         if len(self.classes) >= 2:
             x = np.concatenate([x for x, _ in selected])
             y = np.concatenate([y for _, y in selected])
-            split = 0 < local < x.shape[1]
-            model = forest(100 if split else 200).fit(x, y)
-            if split:
-                # Half the trees see only the leading pixel-exact image channels (the rest are zeroed,
-                # and constant columns are never split on). Averaging them with trees that also see
-                # encoder tokens keeps a few strokes from fitting token noise.
-                only = x.copy()
-                only[:, local:] = 0
-                model.estimators_ += forest(100).fit(only, y).estimators_
+            if 0 < local < x.shape[1]:
+                # Columns: `local` pixel-exact image channels, `size` size channels, then encoder
+                # tokens or context. Half the trees see the image channels with the tokens, half
+                # with the size channels (other columns are zeroed; constant columns are never split
+                # on). Averaging keeps a few strokes from fitting token noise, and size channels in
+                # the token trees lowered particle/pore/crack/binder scores.
+                tokens = x.copy()
+                tokens[:, local:local+size] = 0
+                shape = x.copy()
+                shape[:, local+size:] = 0
+                model = forest(100).fit(tokens, y)
+                model.estimators_ += (shapes if size else forest)(100).fit(shape, y).estimators_
                 model.n_estimators = len(model.estimators_)
+            else:
+                model = forest(200).fit(x, y)
         self.model = model
         self.cuda = make_predictor(model) if model is not None else None
 
