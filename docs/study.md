@@ -97,3 +97,12 @@ def line_score(img, L=9, off=2.5, n=16):
 - **Shaded faces, second pass:** candidates are seam-cut small pieces of 25–600 px whose outline touches a large particle along 25% or more of its length. 39 of 91 were faces. The rest were grains sitting against the particle.
 - **One-pixel lines between particles:** give every particle an id, then set to pore each pixel whose right or lower neighbour has a different id. For small grains, the id is the seam-cut component (8 px or more). For large particles, cut along line score > 12 and keep pieces of 150 px or more. All other pixels take the nearest id of their own class.
 - **Splitting touching large particles:** at a cut of 9 the lines ran through cracks inside a particle, and at 14 touching pairs stayed merged. A marker watershed on the distance map missed stacked agglomerates and drew lines across faces.
+
+## Sample3: per-particle hand pass
+- **Order:** split arms off large particles, split small clusters, merge slivers, then cut merged large particles by hand. Particles went from 1,466 to 1,853.
+- **Small clusters, worked:** a distance-map h-maxima watershed on each small piece (markers from `d − reconstruct(d − h, d) > h`, `cv2.watershed`, pieces under 25 px given to their neighbours). h 0.3 split 300+ clusters; a second pass at h 0.15 split 35 more, and nearly every new line ran along a visible gap between grains. On small grains this works, unlike on large particles (see "Did not work").
+- **Slivers:** pieces with inscribed radius under 2 px, left by cuts, were merged into the neighbour they share most of their outline with.
+- **Finding merged large particles:** solidity (area over convex hull) below 0.86 for pieces of 1,500 px or more found 27 candidates; about 20 were two or three particles joined at a neck. The rest were agglomerates of overlapping primary particles with no dark gap, which stay one particle.
+- **When a hand cut fails:** print the id map as text around it (one letter per particle, `.` for pore). The bridge was usually a few pixels away from where it looked in the zoom, and both cut ends must sit in pore.
+- **Size class:** inscribed radius after the cut separates the classes well, but 66 small pieces had radius 6.5 or more. Most were unsplit grain clusters; four were single large plates and became large. Four tiny "large" pieces from cuts became small.
+
