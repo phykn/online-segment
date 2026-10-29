@@ -30,12 +30,11 @@ const props = defineProps({
     type: Set,
     required: true,
   },
+  // Exports and Save/Load/crop tasks; a running prediction leaves the list open.
   busy: {
     type: Boolean,
     required: true,
   },
-  // Picking another image stays open while a prediction runs.
-  selectBusy: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -142,7 +141,7 @@ const handleDragLeave = (event) => {
       :images="images"
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
-      :select-busy="selectBusy"
+      :busy="props.busy"
       @select="emit('select-image', $event)"
     />
 
@@ -203,7 +202,6 @@ const handleDragLeave = (event) => {
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
       :busy="props.busy"
-      :select-busy="selectBusy"
       @add-files="addFiles"
       @select="emit('select-image', $event)"
       @remove="emit('remove-image', $event)"

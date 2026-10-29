@@ -1,12 +1,10 @@
-import { ERASER_LABEL, LABELS } from '../../config.js'
+import { ERASER_LABEL, LABELS, UNDO_LIMIT } from '../../config.js'
 import {
   ensureLabelMask,
   getLabelMask,
   hasImageLabels,
   markLabelMaskChanged,
 } from './masks.js'
-
-const HISTORY_LIMIT = 100
 
 const drawCircle = (context, point, radius) => {
   context.beginPath()
@@ -288,7 +286,7 @@ export const usePainter = () => {
           [...changes.keys()].map((index) => [index, mask.data[index]]),
         ),
       })
-      if (strokes.undo.length > HISTORY_LIMIT) strokes.undo.shift()
+      if (strokes.undo.length > UNDO_LIMIT) strokes.undo.shift()
       strokes.redo = []
     }
     return changed
@@ -363,7 +361,7 @@ export const usePainter = () => {
     markLabelMaskChanged(image)
     const strokes = getHistory(image)
     strokes.undo.push({ before, after: new Map([...before.keys()].map(i => [i, ERASER_LABEL])) })
-    if (strokes.undo.length > HISTORY_LIMIT) strokes.undo.shift()
+    if (strokes.undo.length > UNDO_LIMIT) strokes.undo.shift()
     strokes.redo = []
     return true
   }

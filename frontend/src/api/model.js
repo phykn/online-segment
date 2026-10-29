@@ -1,3 +1,4 @@
+import { PROGRESS_POLL_MS } from '../../config.js'
 import { readError } from './http.js'
 import { sessionFetch } from './session.js'
 
@@ -15,7 +16,7 @@ export const predictImage = async (image, options = {}, onProgress = () => {}) =
       }
     } catch { /* The prediction request reports actionable errors. */ }
     finally { reading = false }
-  }, 1000)
+  }, PROGRESS_POLL_MS)
   try {
     const response = await sessionFetch('/predict', {
       method: 'POST',

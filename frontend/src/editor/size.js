@@ -1,4 +1,4 @@
-export const EDITOR_MAX_DIMENSION = 2048
+import { EDITOR_MAX_SIDE } from '../../config.js'
 
 export const getEditorSize = (
   sourceWidth,
@@ -13,7 +13,7 @@ export const getEditorSize = (
     : Math.max(1, Math.round((sourceHeight / sourceWidth) * outputWidth))
   const scale = Math.min(
     1,
-    EDITOR_MAX_DIMENSION / Math.max(outputWidth, outputHeight),
+    EDITOR_MAX_SIDE / Math.max(outputWidth, outputHeight),
   )
 
   return {

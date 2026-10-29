@@ -41,6 +41,10 @@ export const VIEW_KEYS = Object.freeze({
 // At or below this window width both sidebars start collapsed, so the canvas gets the room.
 export const SIDEBAR_COLLAPSE_WIDTH = 1100
 export const IMAGE_WIDTH = 768
+// The longest side the editor works at; larger images are scaled down to it.
+export const EDITOR_MAX_SIDE = 2048
+// Strokes Undo can step back through.
+export const UNDO_LIMIT = 100
 
 const LABEL_ALPHA = 230
 
@@ -88,8 +92,10 @@ export const PREDICTION_STAGES = Object.freeze({
   predicting: [0.75, 1],
 })
 
+// How often a running prediction or export asks the backend how far it has got.
+export const PROGRESS_POLL_MS = 1000
+
 export const EXPORT = Object.freeze({
   batchFiles: 16,
   batchBytes: 128 * 1024 * 1024,
-  progressPollMs: 1000,
 })

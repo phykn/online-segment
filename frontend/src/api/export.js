@@ -1,4 +1,4 @@
-import { EXPORT } from '../../config.js'
+import { EXPORT, PROGRESS_POLL_MS } from '../../config.js'
 import { API_URL, readError } from './http.js'
 import { sessionFetch } from './session.js'
 
@@ -102,7 +102,7 @@ const pollWhilePending = async (work, poll, signal) => {
         new Promise((resolve) => {
           const timer = setTimeout(
             () => resolve(true),
-            EXPORT.progressPollMs,
+            PROGRESS_POLL_MS,
           )
           cancelWait = () => {
             clearTimeout(timer)

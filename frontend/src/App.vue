@@ -162,7 +162,7 @@ const restoreCrop = () => {
   predictIfOn()
 }
 
-watch([() => images.value.slice(), resizeWidth], () => { projectDirty.value = true }, { deep: true })
+watch([() => images.value.slice(), resizeWidth], () => { projectDirty.value = true })
 const protectProject = event => {
   if (!projectDirty.value || !images.value.length) return
   event.preventDefault()
@@ -401,9 +401,10 @@ const stepImage = (step) => {
 
 const handleLabelState = (state) => {
   updateLabelState(state)
-  if (state.changed) clearErrors()
-  if (state.changed) projectDirty.value = true
-  if (state.changed && state.committed) {
+  if (!state.changed) return
+  clearErrors()
+  projectDirty.value = true
+  if (state.committed) {
     labelRevision.value += 1
     updateEdits()
   }
@@ -418,7 +419,6 @@ const handleLabelState = (state) => {
       :labeled-images="labeledImages"
       v-model:filter="listFilter"
       :busy="exporting || projectBusy || cropOpen"
-      :select-busy="exporting || projectBusy || cropOpen"
       :downloading="downloading"
       :downloading-all="downloadingAll"
       :download-progress="exportProgress"

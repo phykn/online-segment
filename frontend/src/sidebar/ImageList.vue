@@ -16,7 +16,6 @@ const props = defineProps({
     type: Set,
     required: true,
   },
-  selectBusy: { type: Boolean, default: false },
   busy: {
     type: Boolean,
     required: true,
@@ -65,7 +64,7 @@ const handleDrop = (event) => {
       <button
         class="image-list__select"
         type="button"
-        :disabled="selectBusy"
+        :disabled="busy"
         :aria-pressed="index === selectedIndex"
         @click="emit('select', index)"
       >

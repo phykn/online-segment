@@ -28,38 +28,14 @@ const props = defineProps({
   predicting: { type: Boolean, default: false },
   predictionProgress: { type: Number, default: 0 },
   uncertaintyMask: { type: Object, default: null },
-  image: {
-    type: File,
-    default: null,
-  },
-  targetWidth: {
-    type: Number,
-    default: null,
-  },
-  selectedLabel: {
-    type: Number,
-    required: true,
-  },
-  brushSize: {
-    type: Number,
-    required: true,
-  },
-  resultImage: {
-    type: String,
-    default: '',
-  },
-  uncertaintyImage: {
-    type: String,
-    default: '',
-  },
-  zoom: {
-    type: Number,
-    required: true,
-  },
-  busy: {
-    type: Boolean,
-    default: false,
-  },
+  image: { type: File, default: null },
+  targetWidth: { type: Number, default: null },
+  selectedLabel: { type: Number, required: true },
+  brushSize: { type: Number, required: true },
+  resultImage: { type: String, default: '' },
+  uncertaintyImage: { type: String, default: '' },
+  zoom: { type: Number, required: true },
+  busy: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
