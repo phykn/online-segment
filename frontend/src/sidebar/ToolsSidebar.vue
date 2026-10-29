@@ -55,22 +55,23 @@ const viewDisabled = view => view.name === 'Prediction' && !props.hasPrediction
 
 <template>
   <aside class="sidebar sidebar--tools" :class="{ 'sidebar--collapsed': collapsed }" aria-label="Tools">
-    <button v-if="collapsed" class="sidebar__open" type="button" aria-label="Open tools" title="Open tools" @click="collapsed = false">
+    <button v-if="collapsed" class="sidebar__open" type="button" aria-label="Show tools" title="Show tools" @click="collapsed = false">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
     </button>
     <div v-show="!collapsed" class="sidebar__tools-content">
       <div class="tools-header">
-        <button class="sidebar__open" type="button" aria-label="Collapse tools" title="Collapse tools" @click="collapsed = true">
+        <button class="sidebar__open" type="button" aria-label="Hide tools" title="Hide tools" @click="collapsed = true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
         </button>
         <button class="model-button busy-button" type="button" :disabled="busy || cropping || !images.length"
-          @click="emit('save-project')">
+          title="Save images and labels to a project file" @click="emit('save-project')">
           Save<span v-if="projectTask === 'save'" class="spinner" aria-hidden="true"></span>
         </button>
         <input ref="projectInput" class="visually-hidden" type="file" accept=".json" tabindex="-1"
           aria-label="Load project file" :disabled="busy || cropping"
           @change="emit('open-project', $event.target.files[0]); $event.target.value = ''" />
-        <button class="model-button busy-button" type="button" :disabled="busy || cropping" @click="projectInput.click()">
+        <button class="model-button busy-button" type="button" :disabled="busy || cropping"
+          title="Load a saved project file" @click="projectInput.click()">
           Load<span v-if="projectTask === 'load'" class="spinner" aria-hidden="true"></span>
         </button>
       </div>
@@ -147,11 +148,11 @@ const viewDisabled = view => view.name === 'Prediction' && !props.hasPrediction
       <section class="tool-group" aria-labelledby="reach-group">
         <h2 id="reach-group">Brush reaches</h2>
         <label class="switch"
-          :title="hasUnclear ? 'Brush paints only the unclear areas; clear areas are shaded' : NO_PREDICTION">
+          :title="hasUnclear ? 'Brush paints only unclear areas; the rest is shaded' : NO_PREDICTION">
           <input type="checkbox" :checked="unclearOnly && hasUnclear" :disabled="!hasUnclear"
             @change="emit('update:unclear-only', $event.target.checked)" />
           <span class="switch__track" aria-hidden="true"><span></span></span>
-          <kbd class="key-hint">{{ VIEW_KEYS.unclear }}</kbd>Unclear
+          <kbd class="key-hint">{{ VIEW_KEYS.unclear }}</kbd>Unclear only
         </label>
       </section>
 

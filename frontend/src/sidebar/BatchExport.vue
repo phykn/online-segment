@@ -32,7 +32,7 @@ const requestDownloadAll = () => {
       :style="{ width: downloadProgress + '%' }"
       aria-hidden="true"
     ></span>
-    <span class="model-button__text">{{ downloadingAll ? 'Cancel download' : 'Download All' }}</span>
+    <span class="model-button__text">{{ downloadingAll ? 'Cancel download' : 'Download all' }}</span>
     <span v-if="downloadingAll" class="spinner" aria-hidden="true"></span>
   </button>
   <label class="archive-name">

@@ -94,7 +94,8 @@ const handleDrop = (event) => {
         class="image-list__remove"
         type="button"
         :disabled="busy"
-        :aria-label="'Delete ' + image.name"
+        :aria-label="'Remove ' + image.name"
+        :title="'Remove ' + image.name"
         @click="emit('remove', index)"
       >
         <svg

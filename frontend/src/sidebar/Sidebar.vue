@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 
+import { VIEW_KEYS } from '../../config.js'
 import { IMAGE_FILE_ACCEPT } from '../images/files'
 import { startsCollapsed } from './collapse.js'
 import ImageList from './ImageList.vue'
@@ -52,15 +53,17 @@ const collapsed = ref(startsCollapsed())
 const isMac = /Mac|iP(hone|ad)/.test(navigator.platform)
 const mod = isMac ? '⌘' : 'Ctrl'
 // Each shortcut lists alternatives (shown with /), each a combination of keys (shown with +).
+// Keys a control already shows in full (labels, eraser, Space, view switches) are left out.
 const shortcuts = [
-  { keys: [['?']], action: 'Show shortcuts' },
   { keys: [['Drag']], action: 'Paint' },
-  { keys: [['↑'], ['↓']], action: 'Previous or next image' },
-  { keys: [['Ctrl', 'Wheel']], action: 'Zoom' },
+  { keys: [[VIEW_KEYS.brush, 'Wheel']], action: 'Brush size' },
+  { keys: [[VIEW_KEYS.zoom, 'Wheel'], ['Ctrl', 'Wheel']], action: 'Zoom' },
   { keys: [['Wheel'], ['Middle drag']], action: 'Pan when zoomed' },
   { keys: [['+'], ['−']], action: 'Prediction opacity' },
+  { keys: [['↑'], ['↓']], action: 'Previous or next image' },
   { keys: [[mod, 'Z']], action: 'Undo' },
   { keys: isMac ? [[mod, 'Shift', 'Z']] : [[mod, 'Shift', 'Z'], ['Ctrl', 'Y']], action: 'Redo' },
+  { keys: [['?']], action: 'Show shortcuts' },
 ]
 const version = __APP_VERSION__
 const trainedCount = computed(() => props.images.filter(image => props.labeledImages.has(image)).length)
@@ -104,8 +107,8 @@ const handleDragLeave = (event) => {
       v-if="collapsed"
       class="sidebar__open"
       type="button"
-      aria-label="Open images"
-      title="Open images"
+      aria-label="Show image list"
+      title="Show image list"
       @click="collapsed = false"
     >
       <svg
@@ -167,7 +170,7 @@ const handleDragLeave = (event) => {
       </svg>
       <span class="upload-button__title">Add images</span>
     </button>
-    <button class="sidebar__open" type="button" aria-label="Collapse images" title="Collapse images" @click="collapsed = true">
+    <button class="sidebar__open" type="button" aria-label="Hide image list" title="Hide image list" @click="collapsed = true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
     </button>
     </div>
@@ -217,6 +220,7 @@ const handleDragLeave = (event) => {
         </div>
         <ul class="shortcut-list" aria-label="Keyboard shortcuts">
           <li v-for="shortcut in shortcuts" :key="shortcut.action">
+            <span>{{ shortcut.action }}</span>
             <span class="shortcut-keys">
               <template v-for="(combo, choice) in shortcut.keys" :key="choice">
                 <span v-if="choice" aria-hidden="true">/</span>
@@ -225,7 +229,6 @@ const handleDragLeave = (event) => {
                 </template>
               </template>
             </span>
-            <span>{{ shortcut.action }}</span>
           </li>
         </ul>
       </div>

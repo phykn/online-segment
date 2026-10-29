@@ -86,6 +86,7 @@ button {
   flex: 1;
   flex-direction: column;
   background: var(--stage);
+  container-type: inline-size;
 }
 
 /* Label palette above the image */
@@ -118,8 +119,8 @@ button {
   height: 28px;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 0 7px;
+  gap: 4px;
+  padding: 0 6px;
   cursor: pointer;
   border: 0;
   border-radius: var(--radius);
@@ -189,6 +190,22 @@ button {
 .toolbar-icon:disabled {
   cursor: default;
   opacity: 0.35;
+}
+
+/* Too narrow for one row: the palette becomes two even rows instead of wrapping ragged. */
+@container (max-width: 519px) {
+  .editor-toolbar {
+    display: grid;
+    grid-template-columns: repeat(7, auto);
+  }
+
+  .label-chips {
+    display: contents;
+  }
+
+  .editor-toolbar__divider {
+    justify-self: center;
+  }
 }
 
 /* Stage and canvas */
@@ -993,7 +1010,6 @@ button {
   gap: 8px;
   margin: 0;
   padding: 0;
-  color: var(--slate);
   font-size: 12px;
   list-style: none;
 }
@@ -1009,6 +1025,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  color: var(--slate);
 }
 
 .shortcut-keys .key-hint {

@@ -181,7 +181,7 @@ const openProject = async file => {
   clearErrors()
   try {
     const loaded = await readProject(file)
-    if (projectDirty.value && images.value.length && !window.confirm('Replace the current unsaved project?')) return
+    if (projectDirty.value && images.value.length && !window.confirm('Loading discards unsaved changes. Load anyway?')) return
     resetSession()
     resetModel()
     resizeWidth.value = loaded.settings.width
@@ -330,7 +330,7 @@ const addFiles = async (fileList) => {
   ]
 
   if (validFiles.length) addImages(validFiles)
-  if (skipped.length) window.alert('Skipped:\n' + skipped.join('\n'))
+  if (skipped.length) window.alert('Not added:\n' + skipped.join('\n'))
 }
 
 const removeAt = (index) => {

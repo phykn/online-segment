@@ -93,6 +93,8 @@ const fitSize = computed(() => {
 })
 let resizeObserver = null
 const rendered = ref(false)
+// The last drawn image stays up while the next one decodes, so stepping through images does not flash.
+const shown = ref(false)
 const sourceSize = ref(null)
 const errorMessage = ref('')
 const labelRevision = ref(0)
@@ -275,6 +277,7 @@ watch(
     if (rootRef.value) rootRef.value.scrollTop = 0
 
     if (!file) {
+      shown.value = false
       for (const canvas of [
         imageCanvasRef.value,
         labelCanvasRef.value,
@@ -303,9 +306,11 @@ watch(
         file,
       )
       rendered.value = true
+      shown.value = true
       nextTick(focus)
     } catch (error) {
       if (currentRenderId === renderId) {
+        shown.value = false
         errorMessage.value = 'Could not display the image.'
       }
     } finally {
@@ -378,7 +383,7 @@ defineExpose({
         <button class="model-button model-button--primary" type="button" @click="emptyInputRef.click()">Add images</button>
         <span>or drop image files here</span>
       </div>
-      <div v-show="image && rendered" class="workspace__editor"
+      <div v-show="image && shown" class="workspace__editor"
         :style="fitSize ? { '--fit-width': fitSize.width + 'px' } : undefined">
         <div class="canvas-viewport" :aria-busy="predicting">
           <div v-if="predicting" class="canvas-busy" role="status">
@@ -409,7 +414,7 @@ defineExpose({
             ></canvas>
             <img
               v-if="resultImage && !cropping"
-              v-show="predictionVisible"
+              v-show="predictionVisible && rendered"
               class="workspace__mask"
               :src="resultImage"
               :style="{ opacity: predictionOpacity }"
