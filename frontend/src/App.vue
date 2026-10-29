@@ -286,8 +286,10 @@ const adjustOpacity = (amount) => {
   if (resultImage.value) predictionVisible.value = true
 }
 
+// The click's path is read as dispatched: the ▶ button swaps its icon for a spinner during the click, which
+// leaves the clicked icon outside the button by the time the click gets here.
 const restoreEditorFocus = (event) => {
-  if (event.detail && event.target.closest('button, input[type="checkbox"]')) {
+  if (event.detail && event.composedPath().some(node => node.matches?.('button, input[type="checkbox"]'))) {
     nextTick(() => workspaceRef.value?.focus())
   }
 }

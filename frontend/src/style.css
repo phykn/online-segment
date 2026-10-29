@@ -383,9 +383,11 @@ button {
   min-width: 1px;
 }
 
+/* On a narrow view the image name and size move to their own line rather than being cut. */
 .class-ratio__caption {
   display: flex;
   min-height: 28px;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px 16px;
   padding: 4px 10px;
@@ -398,6 +400,7 @@ button {
 
 .class-ratio__busy {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 6px;
   color: var(--paper);
@@ -1368,6 +1371,20 @@ button {
   .editor-main {
     order: 1;
     min-height: 70dvh;
+  }
+
+  /* With the tools open, they scroll inside the lower part of the screen and the image stays in view above
+     them, rather than the tools starting below an empty stage. */
+  .app:has(.sidebar--tools:not(.sidebar--collapsed)) {
+    height: 100dvh;
+  }
+
+  .app:has(.sidebar--tools:not(.sidebar--collapsed)) .editor-main {
+    min-height: 40dvh;
+  }
+
+  .sidebar--tools:not(.sidebar--collapsed) {
+    max-height: 45dvh;
   }
 
   .workspace {

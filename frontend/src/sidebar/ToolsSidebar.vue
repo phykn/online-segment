@@ -55,9 +55,12 @@ const trainDisabled = computed(() => props.busy || props.cropping || !props.hasI
   || props.upToDate)
 const trainTitle = computed(() => !props.canTrain ? 'Paint at least two classes first'
   : props.upToDate ? 'Prediction is up to date' : undefined)
-// Says why the panel's button is filled; the rail's icon keeps its name instead.
+// Says why the button is filled.
 const dueTitle = computed(() => props.needsTraining && !trainDisabled.value
   ? 'Your latest labels are not trained yet' : undefined)
+// The rail's icon needs its name first.
+const railTitle = computed(() => trainTitle.value
+  ?? 'Train & predict (Space)' + (dueTitle.value ? '\n' + dueTitle.value : ''))
 const views = [
   { name: 'Labels', key: VIEW_KEYS.edits, visible: 'editsVisible', opacity: 'editsOpacity', event: 'edits' },
   { name: 'Prediction', key: VIEW_KEYS.prediction, visible: 'predictionVisible', opacity: 'predictionOpacity', event: 'prediction' },
@@ -78,7 +81,7 @@ const setOpacity = (view, value) => {
       </button>
       <!-- Training stays one click away, with its state, while the tools are hidden. -->
       <button class="sidebar__train" :class="{ 'train-button--due': needsTraining }" type="button" :disabled="trainDisabled"
-        aria-label="Train & predict" :title="trainTitle ?? 'Train & predict (Space)'" @click="emit('train')">
+        aria-label="Train & predict" :title="railTitle" @click="emit('train')">
         <span v-if="predicting" class="spinner" aria-hidden="true"></span>
         <svg v-else viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5L8 5.5Z" /></svg>
       </button>
