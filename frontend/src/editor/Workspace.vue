@@ -78,6 +78,15 @@ const rootRef = ref(null)
 const stackRef = ref(null)
 const controlsRef = ref(null)
 const canvasHeight = ref(null)
+const canvasWidth = ref(null)
+// Pixel size of the working canvases; the stack is scaled (up or down) to fill the free area.
+const editorSize = ref(null)
+const fitSize = computed(() => {
+  const size = editorSize.value
+  if (!size || !canvasWidth.value || !canvasHeight.value) return null
+  const scale = Math.min(canvasWidth.value / size.width, canvasHeight.value / size.height)
+  return { width: Math.floor(size.width * scale), height: Math.floor(size.height * scale) }
+})
 let resizeObserver = null
 const rendered = ref(false)
 const sourceSize = ref(null)
@@ -108,6 +117,8 @@ onMounted(() => {
     const style = getComputedStyle(root)
     canvasHeight.value = Math.max(64, root.clientHeight - parseFloat(style.paddingTop)
       - parseFloat(style.paddingBottom) - (controlsRef.value?.offsetHeight ?? 0) - 8)
+    canvasWidth.value = Math.max(64, root.clientWidth - parseFloat(style.paddingLeft)
+      - parseFloat(style.paddingRight))
   })
   resizeObserver.observe(rootRef.value)
   resizeObserver.observe(controlsRef.value)
@@ -162,6 +173,7 @@ const drawResized = (source, sourceWidth, sourceHeight, file) => {
   labelCanvas.height = height
   resultLabelOutlineCanvas.width = width
   resultLabelOutlineCanvas.height = height
+  editorSize.value = { width, height }
 
   const context = imageCanvas.getContext('2d')
   if (!context) throw new Error('Could not create the image canvas.')
@@ -365,7 +377,8 @@ defineExpose({
             tabindex="-1"
             :aria-label="image ? image.name + ' editor' : undefined"
             :class="{ 'canvas-stack--panning': panning }"
-            :style="{ transform: canvasTransform }"
+            :style="{ transform: canvasTransform, width: fitSize && fitSize.width + 'px',
+              height: fitSize && fitSize.height + 'px' }"
             @wheel="imageInput.wheel"
             @pointerdown="imageInput.pointerDown"
             @pointermove="imageInput.pointerMove"
