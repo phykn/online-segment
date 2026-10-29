@@ -264,15 +264,6 @@ export const usePainter = () => {
             allows,
             changes,
           ) || changed
-      } else if (operation.type === 'instance') {
-        const { instances, id, label } = operation
-        if (instances.width !== mask.width || instances.height !== mask.height) continue
-        for (let i = 0; i < mask.data.length; i += 1) {
-          if (instances.data[i] === id && (!allows || allows(i % mask.width,
-            Math.floor(i / mask.width), mask.width, mask.height))) {
-            changed = setLabel(mask, i, label, changes) || changed
-          }
-        }
       } else {
         changed =
           paintMaskCurve(
@@ -428,16 +419,6 @@ export const usePainter = () => {
   }
 
   return {
-    fillInstance: (instances, point, label) => {
-      const mask = getCurrentMask()
-      if (!mask || !instances || mask.width !== instances.width || mask.height !== instances.height) return false
-      const x = Math.floor(point.x), y = Math.floor(point.y)
-      if (x < 0 || y < 0 || x >= mask.width || y >= mask.height) return false
-      const id = instances.data[y * instances.width + x]
-      if (id <= 0) return false
-      pendingOperations.push({ type: 'instance', instances, id, label })
-      return true
-    },
     beginStroke,
     cancelStroke,
     clear,

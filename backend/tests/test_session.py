@@ -10,7 +10,7 @@ class SessionTests(unittest.TestCase):
     def test_feature_caches_are_isolated_and_released(self):
         store = SessionStore(max_age=3600); first, second = store.create(), store.create()
         image = np.zeros((2, 2, 3), np.uint8)
-        with patch.object(config.feature, 'kind', 'image'), patch.object(config.feature, 'cellpose', 'none'):
+        with patch.object(config.feature, 'kind', 'image'):
             first.segmenter.feature(image)
             self.assertEqual(second.segmenter.features.size, 0)
             second.segmenter.feature(image)

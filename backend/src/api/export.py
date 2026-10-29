@@ -41,7 +41,6 @@ def run_job(
     session: SessionDep,
     width: int | None = Form(default=None, gt=0),
     files: list[UploadFile] = File(min_length=1),
-    diameter: float | None = Form(default=None, gt=0, allow_inf_nan=False),
     edits: str | None = Form(default=None),
 ) -> None:
     corrections = None
@@ -57,7 +56,6 @@ def run_job(
         width,
         [(file.filename or "image", file.file) for file in files],
         session,
-        diameter,
         corrections,
     )
 

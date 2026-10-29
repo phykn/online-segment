@@ -16,7 +16,7 @@ class ExportSession(Protocol):
 
 def append_archive_batch(job_id: str, width: int | None,
         files: list[tuple[str, BinaryIO]], session: ExportSession,
-        diameter: float | None = None, edits=None) -> None:
+        edits=None) -> None:
     path = jobs.temp_path(job_id)
     with session.lock:
         state = jobs.get(job_id, session.id)
@@ -33,8 +33,7 @@ def append_archive_batch(job_id: str, width: int | None,
                     image = read_bytes(source.read())
                     resized = resize_width(image, width)
                     correction = decode(edits[index]) if edits and edits[index] is not None else None
-                    mask = prediction.predict(resized, session.segmenter,
-                        diameter, image.shape[1], correction, check)
+                    mask = prediction.predict(resized, session.segmenter, correction, check)
                     check()
                     append_pair(archive, name, image, mask)
                     done, total = jobs.advance(job_id, session.id)

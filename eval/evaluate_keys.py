@@ -45,12 +45,12 @@ def score(pred, truth, crack):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--kind', default=config.feature.kind, choices=['image', 'encoder', 'hybrid', 'dino'])
+    parser.add_argument('--kind', default=config.feature.kind, choices=['image', 'dino'])
     parser.add_argument('--samples', type=int, nargs='+', default=[1, 2, 3, 4])
     parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
 
-    config.feature.kind, config.feature.cellpose = args.kind, 'none'
+    config.feature.kind = args.kind
     start, summary = time.perf_counter(), {}
     for sample in args.samples:
         img, truth = load(sample)
@@ -59,7 +59,7 @@ def main():
         train[:, half:] = -1
         seg, rows = Segmenter(), []  # one Segmenter per image reuses its tokens and PCA
         for how, count in SETTINGS:
-            seg.fit([(img, (strokes if how == 'strokes' else clicks)(train, count, seed=args.seed), 1.)])
+            seg.fit([(img, (strokes if how == 'strokes' else clicks)(train, count, seed=args.seed))])
             labels, _ = seg.classifier.predict(seg.feature(img))
             rows.append(score(labels[:, half:], truth[:, half:], CRACKS[sample]))
         summary[sample] = dict(miou=round(np.mean([r['miou'] for r in rows]), 4))

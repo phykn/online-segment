@@ -77,11 +77,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('image')
     parser.add_argument('truth')
-    parser.add_argument('--kind', default=config.feature.kind, choices=['image', 'encoder', 'hybrid', 'dino'])
+    parser.add_argument('--kind', default=config.feature.kind, choices=['image', 'dino'])
     parser.add_argument('--seeds', type=int, nargs='+', default=[0, 1])
     args = parser.parse_args()
 
-    config.feature.kind, config.feature.cellpose = args.kind, 'none'
+    config.feature.kind = args.kind
     img = np.asarray(Image.open(args.image).convert('RGB'))
     truth = np.asarray(Image.open(args.truth))
     half = img.shape[1] // 2
@@ -93,7 +93,7 @@ def main():
         for count in (5, 10, 30):
             rows = []
             for seed in args.seeds:
-                seg.fit([(img, simulate(train, count, seed=seed), 1.)])
+                seg.fit([(img, simulate(train, count, seed=seed))])
                 labels, _ = seg.classifier.predict(seg.feature(img))
                 rows.append(score(labels, truth, half))
             print(line(f'{how} {count}', rows), flush=True)

@@ -2,25 +2,18 @@ import unittest
 
 from pydantic import ValidationError
 
-from src.config import config, CellposeConfig, ExportConfig
+from src.config import config, ExportConfig, FeatureConfig
 from src.api.schema import Mask, PredRequest
 
 
 class ConfigTests(unittest.TestCase):
-    def test_cellpose_replaces_sam_configuration(self):
-        self.assertEqual(config.cellpose.checkpoint, 'weights/cpdino-vitb.pth')
-        self.assertEqual(config.cellpose.tile_size, 384)
-        for key in ('sam', 'model'):
+    def test_region_finder_configuration_is_gone(self):
+        for key in ('sam', 'model', 'cellpose'):
             self.assertNotIn(key, config.model_dump())
-
-    def test_invalid_threshold_and_tile_settings_rejected(self):
-        for value in [0, -1, float('nan'), float('inf')]:
-            with self.assertRaises(ValidationError):
-                PredRequest(image='x', diameter=value)
-        for settings in [dict(overlap=1), dict(tile_size=383), dict(batch_size=0),
-                         dict(flow_threshold=float('nan')), dict(min_area=0)]:
-            with self.subTest(settings=settings), self.assertRaises(ValidationError):
-                CellposeConfig(checkpoint='x', **settings)
+        for kind in ('encoder', 'hybrid'):
+            with self.subTest(kind=kind), self.assertRaises(ValidationError):
+                FeatureConfig(kind=kind)
+        self.assertNotIn('cellpose', PredRequest.model_fields)
 
     def test_palette_channels_must_fit_in_png_bytes(self):
         for channel in [-1, 256]:
@@ -36,9 +29,3 @@ class ConfigTests(unittest.TestCase):
         for label in (-2, 10):
             with self.subTest(label=label), self.assertRaises(ValidationError):
                 Mask(width=1, height=1, runs=[(label, 1)])
-
-    def test_invalid_web_cellpose_settings_are_rejected(self):
-        for settings in ({'diameter': 0}, {'diameter': float('nan')}, {'min_area': 0},
-                         {'min_area': 1.5}, {'flow_threshold': -1}, {'cellprob_threshold': float('inf')}):
-            with self.subTest(settings=settings), self.assertRaises(ValidationError):
-                PredRequest(image='x', cellpose=settings)

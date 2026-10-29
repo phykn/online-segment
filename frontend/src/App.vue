@@ -15,7 +15,6 @@ import Workspace from './editor/Workspace.vue'
 import { useImages } from './images/collection'
 import { getSession, onSessionChange, resetSession } from './api/session'
 import { useModel } from './model/useModel'
-import { useProposals } from './model/useProposals'
 import Sidebar from './sidebar/Sidebar.vue'
 import ToolsSidebar from './sidebar/ToolsSidebar.vue'
 import { readProject, writeProject } from './project/file.js'
@@ -27,7 +26,6 @@ const resizeWidth = ref(IMAGE_WIDTH)
 const originalWidth = ref(null)
 const displayedWidth = computed(() => resizeWidth.value == null ? null
   : Math.min(resizeWidth.value, originalWidth.value ?? resizeWidth.value))
-const cellpose = ref({ diameter: null, cellprob_threshold: 0, flow_threshold: 0.4, min_area: 8 })
 const selectedLabel = ref(0)
 const brushSize = ref(BRUSH_SIZE.default)
 const zoom = ref(ZOOM.default)
@@ -70,7 +68,6 @@ const model = useModel({
   images,
   selectedImage,
   resizeWidth,
-  cellpose,
 })
 
 const {
@@ -102,19 +99,17 @@ watch(predictionVersion, () => { predictionVisible.value = true })
 const hasLabels = computed(() => labeledImages.value.has(selectedImage.value))
 const needsTraining = computed(() => hasLabels.value && !canDownloadResult.value && !predicting.value)
 const canClearUnclear = computed(() => !!workspaceRef.value?.hasUnclearLabels
-  && !busy.value && !proposing.value && !projectBusy.value && !cropOpen.value)
+  && !busy.value && !projectBusy.value && !cropOpen.value)
 
-const proposals = useProposals({ selectedImage, resizeWidth, cellpose, error: modelError })
-const { instances, proposing, propose, reset: resetProposals } = proposals
 
 const openCrop = () => {
-  if (!selectedImage.value || busy.value || proposing.value || projectBusy.value) return
+  if (!selectedImage.value || busy.value || projectBusy.value) return
   clearError()
   cropSelection.value = null
   cropOpen.value = true
 }
 const applyCrop = async rect => {
-  if (!selectedImage.value || busy.value || proposing.value || projectBusy.value) return
+  if (!selectedImage.value || busy.value || projectBusy.value) return
   projectTask.value = 'crop'
   clearError()
   try {
@@ -129,7 +124,7 @@ const applyCrop = async rect => {
 }
 const cancelCrop = () => { cropOpen.value = false }
 const restoreCrop = () => {
-  if (!canResetCrop.value || cropOpen.value || busy.value || proposing.value || projectBusy.value) return
+  if (!canResetCrop.value || cropOpen.value || busy.value || projectBusy.value) return
   resetCrop()
   updateEdits()
   clearResult()
@@ -137,28 +132,28 @@ const restoreCrop = () => {
   projectDirty.value = true
 }
 
-watch([() => images.value.slice(), resizeWidth, cellpose], () => { projectDirty.value = true }, { deep: true })
+watch([() => images.value.slice(), resizeWidth], () => { projectDirty.value = true }, { deep: true })
 const protectProject = event => {
   if (!projectDirty.value || !images.value.length) return
   event.preventDefault()
   event.returnValue = ''
 }
 const saveProject = async () => {
-  if (projectBusy.value || busy.value || proposing.value || !images.value.length) return
+  if (projectBusy.value || busy.value || !images.value.length) return
   projectTask.value = 'save'
   clearError()
   try {
     await nextTick()
     const blob = await writeProject(images.value, {
-      width: resizeWidth.value, cellpose: cellpose.value, selectedLabel: selectedLabel.value, brushSize: brushSize.value,
-    }, selectedIndex.value, enabled.value, proposals.snapshot)
+      width: resizeWidth.value, selectedLabel: selectedLabel.value, brushSize: brushSize.value,
+    }, selectedIndex.value, enabled.value)
     saveBlob(blob, projectName.value)
     projectDirty.value = false
   } catch (error) { modelError.value = error.message }
   finally { projectTask.value = '' }
 }
 const openProject = async file => {
-  if (!file || projectBusy.value || busy.value || proposing.value) return
+  if (!file || projectBusy.value || busy.value) return
   projectTask.value = 'load'
   clearError()
   try {
@@ -166,15 +161,12 @@ const openProject = async file => {
     if (projectDirty.value && images.value.length && !window.confirm('Replace the current unsaved project?')) return
     resetSession()
     resetModel()
-    resetProposals()
     resizeWidth.value = loaded.settings.width
-    cellpose.value = loaded.settings.cellpose
     selectedLabel.value = loaded.settings.selectedLabel
     brushSize.value = loaded.settings.brushSize
     images.value = loaded.images
     selectedIndex.value = loaded.selectedIndex
     labeledImages.value = new Set(loaded.images.filter(hasImageLabels))
-    proposals.restore(loaded.images, loaded.regions)
     projectName.value = file.name
     await nextTick()
     projectDirty.value = false
@@ -184,29 +176,10 @@ const openProject = async file => {
 }
 
 const resizeImage = width => {
-  if (busy.value || proposing.value || projectBusy.value || cropOpen.value || width === displayedWidth.value) return
+  if (busy.value || projectBusy.value || cropOpen.value || width === displayedWidth.value) return
   resizeWidth.value = width
-  resetProposals()
   model.invalidateFeatures()
   clearError()
-}
-
-const applySettings = async ({ width, cellpose: parameters }) => {
-  if (busy.value || proposing.value) return
-  if (width === displayedWidth.value) width = resizeWidth.value
-  const retrain = enabled.value
-  if (resizeWidth.value !== width || Object.keys(parameters).some(key => parameters[key] !== cellpose.value[key])) {
-    resizeWidth.value = width
-    cellpose.value = parameters
-    resetProposals()
-    model.invalidateFeatures()
-  }
-  clearError()
-  if (selectedImage.value) {
-    await propose()
-    if (!modelError.value) projectDirty.value = true
-    if (!modelError.value && retrain) await predict()
-  }
 }
 
 const handleShortcut = (event) => {
@@ -246,7 +219,7 @@ const handleShortcut = (event) => {
 }
 
 const train = () => {
-  if (proposing.value || projectBusy.value || cropOpen.value) return
+  if (projectBusy.value || cropOpen.value) return
   void apply()
 }
 
@@ -271,7 +244,7 @@ onMounted(() => {
   window.addEventListener('blur', clearWheelKeys)
   window.addEventListener('beforeunload', protectProject)
   stopSession = onSessionChange((id) => {
-    if (sessionId.value && sessionId.value !== id) { resetProposals(); model.resetSessionResults() }
+    if (sessionId.value && sessionId.value !== id) model.resetSessionResults()
     sessionId.value = id
   })
   void getSession().catch(() => {})
@@ -312,7 +285,6 @@ const clearAllImages = () => {
   if (busy.value || images.value.length === 0) return
 
   clearImages()
-  resetProposals()
   resetModel()
   clearError()
 }
@@ -344,7 +316,7 @@ const handleLabelState = (state) => {
       :images="images"
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
-      :busy="busy || proposing || projectBusy || cropOpen"
+      :busy="busy || projectBusy || cropOpen"
       :downloading="downloading"
       :downloading-all="downloadingAll"
       :download-progress="exportProgress"
@@ -360,7 +332,7 @@ const handleLabelState = (state) => {
     <div class="editor-main">
       <Toolbar
         :selected-label="selectedLabel"
-        :can-reset="hasLabels && !busy && !proposing && !projectBusy && !cropOpen"
+        :can-reset="hasLabels && !busy && !projectBusy && !cropOpen"
         :can-clear-unclear="canClearUnclear"
         @reset-labels="resetLabels"
         @clear-unclear="clearUnclear"
@@ -368,7 +340,6 @@ const handleLabelState = (state) => {
         @update:selected-label="selectedLabel = $event"
       />
       <Workspace
-        :instances="instances"
         ref="workspaceRef"
         :image="selectedImage"
         :cropping="cropOpen"
@@ -389,7 +360,7 @@ const handleLabelState = (state) => {
         :edits-opacity="editsOpacity"
         :unclear-only="unclearOnly"
         :preview-unclear-clear="previewUnclear && canClearUnclear"
-        :busy="downloading || downloadingAll || proposing || projectBusy"
+        :busy="downloading || downloadingAll || projectBusy"
         @crop-selection="cropSelection = $event"
         @image-size="originalWidth = $event.width"
         @label-state-change="handleLabelState"
@@ -408,20 +379,17 @@ const handleLabelState = (state) => {
       v-model:unclear-only="unclearOnly"
       :images="images"
       :width="displayedWidth"
-      :parameters="cellpose"
       :has-image="!!selectedImage"
       :has-prediction="!!resultImage"
       :has-unclear="!!uncertaintyMask"
       :can-reset-crop="canResetCrop"
       :cropping="cropOpen"
       :has-crop-selection="!!cropSelection"
-      :busy="busy || proposing || projectBusy"
+      :busy="busy || projectBusy"
       :project-task="projectTask"
-      :proposing="proposing"
       :predicting="predicting"
       :needs-training="needsTraining"
       :model-error="modelError"
-      @apply="applySettings"
       @resize="resizeImage"
       @train="train"
       @save-project="saveProject"

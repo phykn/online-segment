@@ -28,10 +28,9 @@ const createExport = async (total, signal) => {
   return body.id
 }
 
-const runExport = async (id, files, width, signal, diameter, edits) => {
+const runExport = async (id, files, width, signal, edits) => {
   const body = new FormData()
   if (width != null) body.append('width', String(width))
-  if (diameter != null) body.append('diameter', String(diameter))
   body.append('edits', JSON.stringify(files.map((file) => edits.get(file))))
   for (const file of files) {
     body.append('files', file, file.name)
@@ -159,7 +158,6 @@ export const exportAll = async (
   width,
   onProgress,
   signal,
-  diameter = null,
   edits = new Map(),
 ) => {
   let id = null
@@ -188,7 +186,7 @@ export const exportAll = async (
     let done = 0
     const uploads = (async () => {
       for (const batch of batches) {
-        await runExport(id, batch, width, signal, diameter, edits)
+        await runExport(id, batch, width, signal, edits)
         done += batch.length
         reportProgress(done, files.length)
       }

@@ -3,27 +3,6 @@ import test from 'node:test'
 import { ref } from 'vue'
 
 import { useCanvasInput } from '../src/editor/input.js'
-import { instanceAt } from '../src/model/instances.js'
-
-test('hover maps displayed coordinates to region IDs and clears on exit or pan', () => {
-  const canvas = { width: 10, height: 10, getBoundingClientRect: () =>
-    ({ left: 100, top: 50, right: 300, bottom: 250, width: 200, height: 200 }) }
-  let point = null
-  const input = useCanvasInput({ canvasRef: ref(canvas), getBrushSize: () => 8,
-    getLabel: () => 0, canEdit: () => true, setBrushSize() {}, updateZoom() {},
-    start() {}, stamp() {}, line() {}, finish() {}, hover: value => { point = value } })
-  const mask = { width: 10, height: 10, data: new Int32Array(100) }; mask.data[55] = 999
-  input.pointerMove({ clientX: 210, clientY: 160, pointerId: 1 })
-  assert.equal(instanceAt(mask, point), 999)
-  input.pointerMove({ clientX: 99, clientY: 160, pointerId: 1 })
-  assert.equal(instanceAt(mask, point), 0)
-  input.pointerLeave({ pointerId: 1 })
-  assert.equal(point, null)
-  input.pointerMove({ clientX: 210, clientY: 160, pointerId: 1 })
-  input.pointerDown({ clientX: 210, clientY: 160, pointerId: 1, button: 1,
-    currentTarget: { focus() {}, setPointerCapture() {} }, preventDefault() {} })
-  assert.equal(point, null)
-})
 
 test('refreshes a stationary cursor when the label or brush size changes', () => {
   let label = 0, size = 24

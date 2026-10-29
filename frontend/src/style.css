@@ -203,8 +203,6 @@ button {
 
 .workspace__image,
 .workspace__labels,
-.workspace__region-outlines,
-.workspace__region-preview,
 .workspace__clear-preview,
 .workspace__mask,
 .workspace__uncertainty,
@@ -230,14 +228,6 @@ button {
 
 .workspace__labels {
   z-index: 3;
-}
-
-.workspace__region-preview {
-  z-index: 2;
-}
-
-.workspace__region-outlines {
-  z-index: 5;
 }
 
 .workspace__clear-preview {

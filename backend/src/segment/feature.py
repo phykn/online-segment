@@ -2,8 +2,6 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter, sobel, uniform_filter
-from src.segment.context import Context
-from src.segment.encoder import Tokens
 from src.segment.dino import Pyramid
 
 
@@ -67,15 +65,12 @@ def size_features(image):
 class Features:
     shape: tuple
     local: np.ndarray | None = None
-    tokens: Tokens | Pyramid | None = None
-    context: Context | None = None
-    scale: float = 1.
-    context_mode: str = 'statistics'
+    tokens: Pyramid | None = None
     size: np.ndarray | None = None
 
     @property
     def nbytes(self):
-        return sum(value.nbytes for value in (self.local, self.size, self.tokens, self.context) if value is not None)
+        return sum(value.nbytes for value in (self.local, self.size, self.tokens) if value is not None)
 
     def pixels(self, indices):
         values = []
@@ -85,6 +80,4 @@ class Features:
             values.append(self.size.reshape(-1, self.size.shape[-1])[indices])
         if self.tokens is not None:
             values.append(self.tokens.pixels(indices))
-        if self.context is not None:
-            values.append(self.context.pixels(indices, self.scale, self.context_mode))
         return np.concatenate(values, axis=1) if len(values) > 1 else values[0]

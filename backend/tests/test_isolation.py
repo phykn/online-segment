@@ -1,18 +1,16 @@
 from concurrent.futures import ThreadPoolExecutor
 from tempfile import TemporaryDirectory
 from pathlib import Path
-from threading import Barrier, Lock
-from time import sleep
+from threading import Barrier
 from unittest import TestCase
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 import numpy as np
 from fastapi import HTTPException
 
-from src.config import config, CellposeParameters
+from src.config import config
 from src.export.jobs import JobStore
 from src.segment.prediction import infer
-from src.segment.runtime import CellposeRuntime
 from src.session import SessionStore
 
 
@@ -33,7 +31,7 @@ class IsolationTests(TestCase):
                 return infer(image, acquired.segmenter, train=False)[0]
 
         try:
-            with patch.object(config.feature, 'kind', 'image'), patch.object(config.feature, 'cellpose', 'none'), ThreadPoolExecutor(2) as pool:
+            with patch.object(config.feature, 'kind', 'image'), ThreadPoolExecutor(2) as pool:
                 first = pool.submit(train, a, labels)
                 second = pool.submit(train, b, 1-labels)
                 np.testing.assert_array_equal(first.result(), labels)
@@ -61,35 +59,6 @@ class IsolationTests(TestCase):
                 self.assertEqual(caught.exception.status_code, 404)
             self.assertTrue(Path(path).exists())
             self.assertEqual(store.path(a, 'alice'), path)
-
-    def test_shared_inference_is_serialized_with_per_request_parameters(self):
-        runtime = CellposeRuntime()
-        runtime.model = Mock()
-        runtime.load = Mock(return_value=runtime.model)
-        gate, lock = Barrier(2), Lock()
-        active, peak, diameters = 0, 0, []
-
-        def evaluate(image, **options):
-            nonlocal active, peak
-            with lock:
-                active += 1
-                peak = max(peak, active)
-                diameters.append(options['diameter'])
-            sleep(.03)
-            with lock:
-                active -= 1
-            return np.zeros(image.shape[:2], np.int32), [None, None, np.ones(image.shape[:2])], None
-
-        runtime.model.eval.side_effect = evaluate
-
-        def run(diameter):
-            gate.wait(timeout=5)
-            runtime.run(np.zeros((9, 11, 3), np.uint8), parameters=CellposeParameters(diameter=diameter))
-
-        with ThreadPoolExecutor(2) as pool:
-            list(pool.map(run, [15, 60]))
-        self.assertEqual(peak, 1)
-        self.assertCountEqual(diameters, [15, 60])
 
     def test_process_local_stores_cannot_resolve_each_others_sessions(self):
         first, second = SessionStore(3600), SessionStore(3600)

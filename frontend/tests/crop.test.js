@@ -75,7 +75,7 @@ test('project saves only the cropped image bytes and restores its labels', async
   images.setCrop(cropped)
   const labels = { width: 2, height: 1, data: new Int8Array([0, 3]) }
   restoreLabelMask(cropped, labels)
-  const settings = { width: 768, cellpose: { diameter: null, cellprob_threshold: 0, flow_threshold: .4, min_area: 8 }, selectedLabel: 0, brushSize: 24 }
+  const settings = { width: 768, selectedLabel: 0, brushSize: 24 }
   const saved = await writeProject(images.images.value, settings, 0, false)
   const restored = await readProject(saved)
   assert.equal(restored.images.length, 1)

@@ -14,7 +14,7 @@ const setup = () => {
   const error = ref('')
   const downloads = useDownloads({
     images: ref([image]), selectedImage: ref(image), resizeWidth: ref(null),
-    diameter: ref(19), result: ref({ image, mask }),
+    result: ref({ image, mask }),
     canDownloadResult: ref(true), predicting: ref(false), error,
   })
   return { downloads, error, mask }

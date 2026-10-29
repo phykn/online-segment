@@ -6,13 +6,12 @@ import unittest
 from unittest.mock import patch
 import numpy as np
 from PIL import Image
-from src.config import config, CellposeParameters
-from src.api.model import predict as api_predict, proposals
-from src.api.schema import Mask, PredRequest, TrainingImage, ProposalRequest
+from src.config import config
+from src.api.model import predict as api_predict
+from src.api.schema import Mask, PredRequest, TrainingImage
 from src.data.mask import decode, encode
 from src.segment.classifier import Classifier, rebalance, refine
 from src.segment.model import Segmenter
-from src.segment.flow import Endpoints
 from src.segment.prediction import infer, predict
 
 
@@ -39,8 +38,6 @@ class ClassifierTests(unittest.TestCase):
     def setUp(self):
         self.patch = patch.object(config.feature, 'kind', 'image'); self.patch.start()
         self.addCleanup(self.patch.stop)
-        context = patch.object(config.feature, 'cellpose', 'none'); context.start()
-        self.addCleanup(context.stop)
 
     def test_a_quarter_of_the_trees_use_only_leading_image_channels(self):
         rng = np.random.default_rng(0)
@@ -67,21 +64,19 @@ class ClassifierTests(unittest.TestCase):
         classifier.fit([(x, y)])
         self.assertEqual(len(classifier.model.estimators_), 200)
 
-    def test_pixels_generalize_inside_one_proposal_and_outside_proposals(self):
+    def test_pixels_generalize_to_unlabeled_areas(self):
         image, edits = fixture(); segmenter = Segmenter()
-        with patch('src.segment.model.runtime.run') as run:
-            result = infer(image, segmenter, edits=edits)
-            self.assertEqual(result[0][12, 40], 1)
-            self.assertEqual(result[0][12, 56], 2)
-            swapped = edits.copy(); swapped[edits == 1] = 2; swapped[edits == 2] = 1
-            second = infer(image, segmenter, edits=swapped)
-            self.assertEqual(second[0][12, 40], 2)
-            self.assertEqual(second[0][12, 56], 1)
-            self.assertEqual(result[2]['training_samples'], 16)
-            self.assertEqual(result[2]['training_samples_by_class'], [0, 8, 8, 0])
-            self.assertEqual(result[2]['message'], '')
-            self.assertEqual(result[3], [])
-            run.assert_not_called()
+        result = infer(image, segmenter, edits=edits)
+        self.assertEqual(result[0][12, 40], 1)
+        self.assertEqual(result[0][12, 56], 2)
+        swapped = edits.copy(); swapped[edits == 1] = 2; swapped[edits == 2] = 1
+        second = infer(image, segmenter, edits=swapped)
+        self.assertEqual(second[0][12, 40], 2)
+        self.assertEqual(second[0][12, 56], 1)
+        self.assertEqual(result[2]['training_samples'], 16)
+        self.assertEqual(result[2]['training_samples_by_class'], [0, 8, 8] + [0]*7)
+        self.assertEqual(result[2]['message'], '')
+        self.assertEqual(result[3], [])
         self.assertEqual(len(segmenter.features.values), 1)
 
     def test_class_zero_can_represent_the_same_material_as_any_other_class(self):
@@ -139,7 +134,7 @@ class ClassifierTests(unittest.TestCase):
         segmenter = Segmenter()
         result = infer(image, segmenter, edits=edits)
         self.assertEqual(result[2]['classes'], [0, 1, 2])
-        self.assertEqual(result[2]['training_samples_by_class'], [4, 8, 8, 0])
+        self.assertEqual(result[2]['training_samples_by_class'], [4, 8, 8] + [0]*7)
         self.assertEqual(result[2]['message'], '')
         raw, unclear = segmenter.classifier.predict(segmenter.feature(image))
         np.testing.assert_array_equal(result[0], raw)
@@ -152,7 +147,7 @@ class ClassifierTests(unittest.TestCase):
         # Equal input features cannot explain conflicting labels: preserve RF disagreement.
         self.assertTrue(np.any(result[0][edits >= 0] != edits[edits >= 0]))
         self.assertTrue((result[1][edits >= 0] == 1).all())
-        self.assertEqual(result[2]['training_samples_by_class'], [4, 4, 0, 0])
+        self.assertEqual(result[2]['training_samples_by_class'], [4, 4] + [0]*8)
         np.testing.assert_array_equal(result[0], predict(image, segmenter, edits=edits))
 
     def test_single_class_and_erasure_do_not_flood_image(self):
@@ -164,58 +159,9 @@ class ClassifierTests(unittest.TestCase):
         self.assertTrue((erased[0] == -1).all())
         self.assertEqual(erased[2]['training_samples'], 0)
 
-    def test_proposal_ids_above_int8_range_are_preserved_and_never_train(self):
-        image, _ = fixture(); model = Segmenter(); session = SimpleNamespace(lock=RLock(), segmenter=model)
-        ids = np.arange(image.shape[0]*image.shape[1], dtype=np.int32).reshape(image.shape[:2])
-        with patch('src.segment.model.runtime.run', return_value=(ids, np.zeros(ids.shape, np.float32), None, None)) as run:
-            response = proposals(ProposalRequest(image=encoded(image)), session)
-            self.assertEqual(response.runs, [(i, 1) for i in range(ids.size)])
-            proposals(ProposalRequest(image=encoded(image)), session)
-            self.assertEqual(run.call_count, 1)
-        self.assertEqual(model.training, {})
-        self.assertIsNone(model.classifier.model)
-
-    def test_statistics_are_cached_and_do_not_lock_pixel_classes_to_instances(self):
-        image, edits = fixture(); model = Segmenter()
-        ids = np.zeros(edits.shape, np.int32); ids[:, :32] = 1000
-        logits = np.zeros(edits.shape, np.float32)
-        endpoints = Endpoints(np.indices(edits.shape).astype(np.float32), ids > 0)
-        with patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run', return_value=(ids, logits, None, endpoints)) as run:
-            model.propose(image)
-            first = infer(image, model, edits=edits)[0]
-            # Different pixels of one proposed particle, and both classes outside it.
-            self.assertEqual(first[20, 8], 1); self.assertEqual(first[20, 24], 2)
-            self.assertEqual(first[20, 40], 1); self.assertEqual(first[20, 56], 2)
-            second = infer(image, model, edits=np.where(edits >= 0, 3-edits, -1))[0]
-            self.assertEqual(second[20, 40], 2); self.assertEqual(second[20, 56], 1)
-            model.features.clear()
-            np.testing.assert_array_equal(second, infer(image, model, train=False)[0])
-            self.assertEqual(run.call_count, 1)
-
-    def test_one_class_does_not_run_cellpose_or_fit_pca(self):
+    def test_one_class_does_not_run_dino_or_fit_pca(self):
         image, edits = fixture(); edits[edits == 2] = -1; model = Segmenter()
-        with patch.object(config.feature, 'kind', 'hybrid'), patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run') as run:
+        with patch.object(config.feature, 'kind', 'dino'), patch('src.segment.model.dino.run') as run:
             self.assertTrue((infer(image, model, edits=edits)[0] == -1).all())
             run.assert_not_called()
             self.assertIsNone(model.pca)
-
-    def test_parameter_changes_refresh_features_and_retrain_from_the_same_labels_per_session(self):
-        image, edits = fixture(); model = Segmenter(); other = Segmenter()
-        session = SimpleNamespace(lock=RLock(), segmenter=model)
-        parameters = CellposeParameters(diameter=15, cellprob_threshold=-1, flow_threshold=.6, min_area=3)
-        ids = np.ones(edits.shape, np.int32); logits = np.ones(edits.shape, np.float32)
-        payload = PredRequest(image=encoded(image), cellpose=parameters, edits=mask_payload(edits),
-                              training=[TrainingImage(image=encoded(image), edits=mask_payload(edits))])
-        with patch.object(config.feature, 'cellpose', 'statistics'), patch('src.segment.model.runtime.run', return_value=(ids, logits, None, None)) as run:
-            proposals(ProposalRequest(image=encoded(image), cellpose=parameters), session)
-            first = api_predict(payload, session)
-            self.assertEqual(first.summary['training_samples'], 16)
-            self.assertEqual(run.call_count, 1)
-            payload.cellpose = parameters.model_copy(update={'flow_threshold': .8})
-            second = api_predict(payload, session)
-            self.assertEqual(second.summary['training_samples'], 16)
-            self.assertEqual(run.call_count, 2)
-            self.assertEqual(run.call_args.kwargs['parameters'].flow_threshold, .8)
-            self.assertEqual(model.parameters.diameter, 15)
-            self.assertIsNone(other.parameters.diameter)
-            self.assertEqual(other.parameters.flow_threshold, config.cellpose.flow_threshold)

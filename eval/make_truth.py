@@ -100,7 +100,7 @@ def segment(img, cfg, gaps=False):
     seed, outer, deep, edge, dark = seeds(smooth, cfg)
 
     seg = Segmenter()
-    seg.fit([(img, seed, 1.)])
+    seg.fit([(img, seed)])
     feats, model = seg.feature(img), seg.classifier.model
     probs = np.concatenate([model.predict_proba(feats.pixels(np.arange(i, min(i+65536, feats.shape[0]*feats.shape[1]))))
                             for i in range(0, feats.shape[0]*feats.shape[1], 65536)]).reshape(*feats.shape, -1)
@@ -132,7 +132,7 @@ def overlay(gray, mask):
 
 
 def main(src, dst, scale=1., gaps=False):
-    config.feature.kind, config.feature.cellpose = 'dino', 'none'
+    config.feature.kind = 'dino'
     img = np.asarray(Image.open(src).convert('RGB'))
     cfg = {k: max(1, int(round(v*scale))) if k in LENGTHS else v for k, v in CONFIG.items()}
     mask, seed, cuts = segment(img, cfg, gaps)

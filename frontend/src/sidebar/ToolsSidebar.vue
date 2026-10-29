@@ -2,12 +2,10 @@
 import { ref, watch } from 'vue'
 
 import { BRUSH_SIZE, OPACITY, ZOOM } from '../../config.js'
-import ProcessingControls from './ProcessingControls.vue'
 
 const props = defineProps({
   images: { type: Array, required: true },
   width: { type: Number, default: null },
-  parameters: { type: Object, required: true },
   hasImage: { type: Boolean, default: false },
   hasPrediction: { type: Boolean, default: false },
   hasUnclear: { type: Boolean, default: false },
@@ -16,7 +14,6 @@ const props = defineProps({
   hasCropSelection: { type: Boolean, default: false },
   busy: { type: Boolean, required: true },
   projectTask: { type: String, default: '' },
-  proposing: { type: Boolean, default: false },
   predicting: { type: Boolean, default: false },
   needsTraining: { type: Boolean, default: false },
   modelError: { type: String, default: '' },
@@ -29,7 +26,7 @@ const props = defineProps({
   unclearOnly: { type: Boolean, required: true },
 })
 const emit = defineEmits([
-  'apply', 'resize', 'train', 'save-project', 'open-project', 'crop', 'reset-crop', 'apply-crop', 'cancel-crop',
+  'resize', 'train', 'save-project', 'open-project', 'crop', 'reset-crop', 'apply-crop', 'cancel-crop',
   'update:brush-size', 'update:zoom', 'update:prediction-visible', 'update:edits-visible',
   'update:prediction-opacity', 'update:edits-opacity', 'update:unclear-only',
 ])
@@ -146,11 +143,6 @@ const views = [
         </label>
       </section>
 
-      <section class="tool-group" aria-labelledby="regions-group">
-        <h2 id="regions-group">Regions</h2>
-        <ProcessingControls :width="width" :parameters="parameters" :busy="busy" :proposing="proposing"
-          :locked="cropping" :has-image="hasImage" @apply="emit('apply', $event)" />
-      </section>
     </div>
   </aside>
 </template>

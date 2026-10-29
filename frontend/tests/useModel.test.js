@@ -64,7 +64,7 @@ const installBrowserMocks = () => {
   }
 }
 
-const makeModel = (image, width = 100, cellpose = ref(null)) => {
+const makeModel = (image, width = 100) => {
   const images = ref([image])
   const selectedImage = ref(image)
   const resizeWidth = ref(width)
@@ -74,7 +74,6 @@ const makeModel = (image, width = 100, cellpose = ref(null)) => {
       images,
       selectedImage,
       resizeWidth,
-      cellpose,
     }),
     resizeWidth,
   }
@@ -121,11 +120,11 @@ test('edits preserve the displayed prediction and wait for Space to train again'
   } finally {globalThis.fetch=originalFetch;browser.restore();resetSession()}
 })
 
-test('Cellpose changes invalidate predictions while preserving and sending the training labels', async () => {
+test('feature resets invalidate predictions while preserving and sending the training labels', async () => {
   resetSession()
   const browser = installBrowserMocks(), originalFetch = globalThis.fetch
-  const image = namedBlob('parameters.png'), settings = ref({ diameter: null, flow_threshold: .4, cellprob_threshold: 0, min_area: 8 })
-  const { model } = makeModel(image, 100, settings), requests = []
+  const image = namedBlob('parameters.png')
+  const { model } = makeModel(image, 100), requests = []
   const mask = ensureLabelMask(image, 10, 5); mask.data[0] = 0; mask.labeledCount = 1
   globalThis.fetch = async (url, options) => {
     if (url === '/api/sessions') return Response.json({id:'parameters'})
@@ -133,13 +132,11 @@ test('Cellpose changes invalidate predictions while preserving and sending the t
   }
   try {
     await model.apply()
-    settings.value = { ...settings.value, diameter: 15, cellprob_threshold: -1 }
     model.invalidateFeatures()
     assert.equal(model.canDownloadResult.value, false)
     await model.predict()
     assert.equal(requests.length, 2)
-    assert.equal(requests[1].cellpose.diameter, 15)
-    assert.equal(requests[1].cellpose.cellprob_threshold, -1)
+    assert.equal('cellpose' in requests[1], false)
     assert.deepEqual(requests[1].training, requests[0].training)
     assert.equal(model.canDownloadResult.value, true)
   } finally { globalThis.fetch = originalFetch; browser.restore(); resetSession() }

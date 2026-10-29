@@ -11,7 +11,6 @@ export const useModel = ({
   images,
   selectedImage,
   resizeWidth,
-  cellpose = ref(null),
 }) => {
   const predicting = ref(false)
   let pendingPrediction = null
@@ -115,7 +114,6 @@ export const useModel = ({
     images.value.includes(request.image) &&
     selectedImage.value === request.image &&
     resizeWidth.value === request.width &&
-    cellpose.value === request.cellpose &&
     revision.value === request.revision
 
   const runPrediction = async (request) => {
@@ -139,7 +137,6 @@ export const useModel = ({
       progress.value = { stage: 'waiting', done: 0, total: 0 }
       const response = await predictImage(image, {
         width: request.width,
-        cellpose: request.cellpose,
         edits: makeEdits(request.image),
         training,
       }, (state) => {
@@ -190,7 +187,6 @@ export const useModel = ({
       width,
       revision: revision.value,
       sequence: ++predictionSequence,
-      cellpose: cellpose.value,
     }
     clearError()
     return drainPredictions()

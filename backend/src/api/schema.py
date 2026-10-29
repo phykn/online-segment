@@ -1,9 +1,9 @@
 from typing import Annotated
 
 from pydantic import BaseModel, Field
-from src.config import CellposeParameters
+from src.config import CLASSES
 
-LabelValue = Annotated[int, Field(ge=-1, le=9)]
+LabelValue = Annotated[int, Field(ge=-1, lt=CLASSES)]
 
 
 class SessionResponse(BaseModel):
@@ -21,24 +21,9 @@ class TrainingImage(BaseModel):
     edits: Mask
 
 
-class ProposalRequest(BaseModel):
-    image: str = Field(min_length=1)
-    width: int | None = Field(default=None, gt=0)
-    cellpose: CellposeParameters | None = None
-
-
-class InstanceMask(BaseModel):
-    width: int = Field(gt=0)
-    height: int = Field(gt=0)
-    runs: list[tuple[Annotated[int, Field(ge=0)], Annotated[int, Field(gt=0)]]]
-
-
 class PredRequest(BaseModel):
     image: str = Field(min_length=1)
     width: int | None = Field(default=None, gt=0)
-    cellpose: CellposeParameters | None = None
-    diameter: float | None = Field(default=None, gt=0, allow_inf_nan=False, json_schema_extra={'deprecated': True},
-                                   description='Accepted for compatibility; RF does not use a size threshold.')
     edits: Mask | None = None
     training: list[TrainingImage] | None = None
 

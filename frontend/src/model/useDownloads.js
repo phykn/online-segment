@@ -65,7 +65,6 @@ export const useDownloads = ({
           downloadProgress.value = progress
         },
         controller.signal,
-        null,
         new Map(images.value.map((file) => [file, makeEdits(file)])),
       )
       saveBlob(blob, zipName(archiveName))

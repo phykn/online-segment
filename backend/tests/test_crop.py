@@ -60,7 +60,6 @@ class CropTests(unittest.TestCase):
                     return_value=np.array([[0, 1, 3], [3, 1, 0]], np.int8)) as predict:
                 append_archive_batch(job, 3, [('source.png', BytesIO(cropped))], session)
             self.assertEqual(predict.call_args.args[0].shape, (2, 3, 3))
-            self.assertEqual(predict.call_args.args[3], 6)
             with ZipFile(store.path(job, 'a')) as archive:
                 for name in archive.namelist():
                     with Image.open(BytesIO(archive.read(name))) as result:

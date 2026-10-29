@@ -116,8 +116,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('image')
     parser.add_argument('truth')
-    parser.add_argument('--kind', default=config.feature.kind, choices=['image', 'encoder', 'hybrid', 'dino'])
-    parser.add_argument('--context', default=config.feature.cellpose, choices=['none', 'foreground', 'statistics'])
+    parser.add_argument('--kind', default=config.feature.kind, choices=['image', 'dino'])
     parser.add_argument('--texture', action='store_true')
     parser.add_argument('--width', type=int, default=768)
     parser.add_argument('--clicks', type=int, default=0, help='dabs per class; 0 trains on every left-half label')
@@ -125,7 +124,7 @@ def main():
     parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
 
-    config.feature.kind, config.feature.cellpose, config.feature.texture = args.kind, args.context, args.texture
+    config.feature.kind, config.feature.texture = args.kind, args.texture
     img, truth = load(args.image, args.truth, args.width)
     half = img.shape[1] // 2
     train = truth.astype(np.int8)  # 255 wraps to -1, the app's unlabeled value
@@ -137,9 +136,9 @@ def main():
 
     seg = Segmenter()
     start = time.perf_counter()
-    seg.fit([(img, train, 1.)])
+    seg.fit([(img, train)])
     labels, _ = seg.classifier.predict(seg.feature(img))
-    result = dict(kind=args.kind, context=args.context, texture=args.texture, width=img.shape[1],
+    result = dict(kind=args.kind, texture=args.texture, width=img.shape[1],
                   seconds=round(time.perf_counter()-start, 2), **score(labels[:, half:], truth[:, half:]))
     print(json.dumps(result, indent=2))
 

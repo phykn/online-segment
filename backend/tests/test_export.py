@@ -52,7 +52,7 @@ class ExportTests(unittest.TestCase):
 
         self.assertLess(len(png), mask.nbytes // 8)
 
-    def test_batch_preserves_order_size_threshold_and_edits(self):
+    def test_batch_preserves_order_and_edits(self):
         sources=[]
         for color in ('black','white'):
             buf=BytesIO();Image.new('RGB',(4,2),color).save(buf,format='PNG');sources.append(buf.getvalue())
@@ -64,12 +64,11 @@ class ExportTests(unittest.TestCase):
             edits=[Mask(width=2,height=1,runs=[(-1,1),(3,1)]),None]
             with patch('src.export.pipeline.jobs',store), patch('src.export.pipeline.prediction.predict',
                     return_value=np.array([[0,3]],np.int8)) as run:
-                append_archive_batch(job,2, [('same.png',BytesIO(b)) for b in sources],session,19,edits)
+                append_archive_batch(job,2, [('same.png',BytesIO(b)) for b in sources],session,edits)
             self.assertEqual(run.call_count,2)
             self.assertEqual(run.call_args_list[0].args[0].shape,(1,2,3))
-            self.assertEqual(run.call_args_list[0].args[2:4],(19,4))
-            np.testing.assert_array_equal(run.call_args_list[0].args[4],[[-1,3]])
-            self.assertIsNone(run.call_args_list[1].args[4])
+            np.testing.assert_array_equal(run.call_args_list[0].args[2],[[-1,3]])
+            self.assertIsNone(run.call_args_list[1].args[2])
             with ZipFile(store.path(job,'a')) as archive:
                 self.assertEqual(archive.namelist(),['same_image.png','same_mask.png','same_2_image.png','same_2_mask.png'])
                 for index, color in enumerate((0, 255)):
@@ -99,7 +98,7 @@ class ExportTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             store=JobStore(Path(tmp),3600,'test');job=store.create('a');store.start(job,'a',1)
             session=SimpleNamespace(id='a',lock=RLock(),segmenter=object())
-            def cancel(image,segmenter,diameter,width,edits,check):
+            def cancel(image,segmenter,edits,check):
                 store.cancel(job,'a');check()
             with patch('src.export.pipeline.jobs',store),patch('src.export.pipeline.prediction.predict',side_effect=cancel):
                 from fastapi import HTTPException

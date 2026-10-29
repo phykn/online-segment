@@ -75,7 +75,7 @@ def segment(img):
     seed[collector] = -1
 
     seg = Segmenter()
-    seg.fit([(img, seed, 1.)])
+    seg.fit([(img, seed)])
     feats, model = seg.feature(img), seg.classifier.model
     size = feats.shape[0]*feats.shape[1]
     probs = np.concatenate([model.predict_proba(feats.pixels(np.arange(i, min(i+65536, size))))
@@ -96,7 +96,7 @@ def segment(img):
 
 
 def main(src, dst):
-    config.feature.kind, config.feature.cellpose = 'dino', 'none'
+    config.feature.kind = 'dino'
     # Scale 8 at the native 1058 px needs a few more tokens than the app allows by default.
     config.dino.max_tokens = 300000
     img = np.asarray(Image.open(src).convert('RGB'))

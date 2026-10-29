@@ -2,7 +2,6 @@ import unittest
 import cv2
 import numpy as np
 from src.segment.cache import Cache
-from src.segment.encoder import Tokens
 from src.segment.feature import image_features, luminance, size_features
 
 
@@ -19,35 +18,6 @@ class FeatureTests(unittest.TestCase):
         # The linear stretch it replaced moved by far more under the same gamma.
         stretch = lambda g: np.clip((g - np.percentile(g, 1)) / (np.percentile(g, 99) - np.percentile(g, 1)), 0, 1)
         self.assertGreater(np.abs(stretch(np.clip(gray, 0, 1)**1.5) - stretch(gray)).mean(), .05)
-
-    def test_projection_coordinates_match_resize_overlap_and_padding(self):
-        from cellpose.transforms import average_tiles
-        rng = np.random.default_rng(4)
-        tiles = [rng.normal(size=(4, 4, 3)).astype(np.float32) for _ in range(4)]
-        regions = [(0, 0), (0, 16), (16, 0), (16, 16)]
-        tokens = Tokens(tiles, (39, 41), regions, (4, 5, 3, 4), 32)
-        resized = np.stack([cv2.resize(t, (32, 32), interpolation=cv2.INTER_LINEAR).transpose(2, 0, 1) for t in tiles])
-        expected = average_tiles(resized, [[y, y+32] for y, x in regions], [[x, x+32] for y, x in regions], 48, 48)
-        expected = expected[:, 4:43, 3:44].transpose(1, 2, 0).reshape(-1, 3)
-        indices = np.arange(39*41)
-        np.testing.assert_allclose(tokens.pixels(indices), expected, atol=5e-7)
-        chunks = np.concatenate([tokens.pixels(indices[i:i+77]) for i in range(0, len(indices), 77)])
-        np.testing.assert_array_equal(chunks, tokens.pixels(indices))
-
-    def test_diameter_resampling_matches_dense_resize_after_unpadding_and_blending(self):
-        from dataclasses import replace
-        rng = np.random.default_rng(2)
-        tokens = Tokens([rng.normal(size=(4, 4, 3)).astype(np.float32) for _ in range(4)],
-                        (39, 41), [(0, 0), (0, 16), (16, 0), (16, 16)], (4, 5, 3, 4), 32)
-        dense = tokens.pixels(np.arange(39*41)).reshape(39, 41, 3)
-        for shape in ((19, 21), (79, 83)):
-            resized = replace(tokens, output_shape=shape)
-            expected = cv2.resize(dense, (shape[1], shape[0])).reshape(-1, 3)
-            indices = np.arange(np.prod(shape))
-            # OpenCV 5's float32 resize rounds to ~1e-6; ours stays within 2e-7 of a float64 resize.
-            np.testing.assert_allclose(resized.pixels(indices), expected, atol=2e-6)
-            chunks = np.concatenate([resized.pixels(indices[i:i+77]) for i in range(0, len(indices), 77)])
-            np.testing.assert_array_equal(chunks, resized.pixels(indices))
 
     def test_image_features_are_finite_for_tiny_constant_images(self):
         for shape in [(1, 1, 3), (3, 7, 3), (33, 17, 3)]:

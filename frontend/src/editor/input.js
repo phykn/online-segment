@@ -16,16 +16,13 @@ export const useCanvasInput = ({
   getLabel,
   canEdit,
   start,
-  selectRegion = () => false,
   stamp,
   line,
   finish,
   abort = () => {},
-  hover = () => {},
 }) => {
   const viewport = useViewport(canvasRef, getBrushSize, sharedPan)
   let painting = false
-  let regionSelected = false
   let activePointerId = null
   let lastPoint = null
   let lastMidpoint = null
@@ -36,7 +33,6 @@ export const useCanvasInput = ({
     const label = getLabel()
     const color =
       label === ERASER_LABEL ? 'var(--body)' : LABELS[label].cursorColor
-    hover(painting ? null : viewport.getCanvasPoint(event), event)
     return viewport.updateCursor(event, color)
   }
 
@@ -53,7 +49,6 @@ export const useCanvasInput = ({
     viewport.stopPan()
     viewport.hideCursor()
     cursorPoint = null
-    hover(null)
     if (wasPainting) finish()
   }
 
@@ -88,7 +83,6 @@ export const useCanvasInput = ({
     if (!canEdit() || activePointerId !== null) return
 
     if (event.button === MIDDLE_BUTTON) {
-      hover(null)
       event.currentTarget.focus({ preventScroll: true })
       viewport.startPan(event)
       if (viewport.panning.value) activePointerId = event.pointerId
@@ -105,9 +99,7 @@ export const useCanvasInput = ({
     start()
     lastPoint = viewport.getCanvasPoint(event)
     lastMidpoint = lastPoint
-    // Choose once per gesture so crossing a particle does not change a brush drag.
-    regionSelected = !event.shiftKey && selectRegion(lastPoint, getLabel())
-    if (!regionSelected) stamp(lastPoint, viewport.getBrushRadius(), getLabel())
+    stamp(lastPoint, viewport.getBrushRadius(), getLabel())
   }
 
   const pointerMove = (event) => {
@@ -120,7 +112,6 @@ export const useCanvasInput = ({
     }
     if (viewport.movePan(event)) return
     if (!updateCursor(event) || !painting || !lastPoint) return
-    if (regionSelected) return
 
     event.preventDefault()
     const samples = event.getCoalescedEvents?.() ?? []
@@ -145,7 +136,7 @@ export const useCanvasInput = ({
   const pointerEnd = (event) => {
     if (event.pointerId !== activePointerId) return
     const wasPainting = painting
-    if (wasPainting && !regionSelected && lastPoint && lastMidpoint) {
+    if (wasPainting && lastPoint && lastMidpoint) {
       line(
         lastMidpoint,
         lastPoint,
@@ -191,7 +182,6 @@ export const useCanvasInput = ({
     }
     viewport.hideCursor()
     cursorPoint = null
-    hover(null)
   }
 
   return {

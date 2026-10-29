@@ -196,9 +196,7 @@ const handleDragLeave = (event) => {
         <ul class="shortcut-list" aria-label="Keyboard shortcuts">
           <li><kbd>1 – 9, 0</kbd><span>Label</span></li>
           <li><kbd>T</kbd><span>Erase</span></li>
-          <li><kbd>Click</kbd><span>Select region</span></li>
           <li><kbd>Drag</kbd><span>Paint</span></li>
-          <li><kbd>Shift + drag</kbd><span>Paint anywhere</span></li>
           <li><kbd>Space</kbd><span>Train &amp; predict</span></li>
           <li><kbd>B + wheel</kbd><span>Brush size</span></li>
           <li><kbd>Z + wheel</kbd><span>Zoom</span></li>

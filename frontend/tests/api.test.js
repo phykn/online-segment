@@ -62,7 +62,6 @@ test('exportAll uploads images in bounded batches', async () => {
       512,
       (value) => progress.push(value),
       undefined,
-      19,
       new Map([[sampleFiles[0],correction]]),
     )
     assert.equal(await result.text(), 'zip')
@@ -84,7 +83,7 @@ test('exportAll uploads images in bounded batches', async () => {
   assert.equal(uploads[1][1].body.getAll('files').length, 1)
   assert.equal(uploads[1][1].body.getAll('files')[0].name, '17.png')
   assert.equal(uploads[0][1].body.has('labels'), false)
-  assert.equal(uploads[0][1].body.get('diameter'),'19')
+  assert.equal(uploads[0][1].body.has('diameter'),false)
   const sentEdits=JSON.parse(uploads[0][1].body.get('edits'))
   assert.equal(sentEdits.length,16)
   assert.deepEqual(sentEdits[0],correction)

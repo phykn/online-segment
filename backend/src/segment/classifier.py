@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier
+from src.config import CLASSES
 from src.segment.cuda_forest import make_predictor
 
 
@@ -24,21 +25,21 @@ class Classifier:
         self.model = None
         self.cuda = None
         self.count = 0
-        self.counts = [0]*4
+        self.counts = [0]*CLASSES
         self.classes = []
 
     def fit(self, samples, local=0, size=0):
         selected = [(x, y) for x, y in samples if len(y)]
         self.count = sum(len(y) for _, y in selected)
-        self.counts = [sum(int(np.count_nonzero(y == label)) for _, y in selected) for label in range(4)]
+        self.counts = [sum(int(np.count_nonzero(y == label)) for _, y in selected) for label in range(CLASSES)]
         self.classes = sorted(set(int(v) for _, y in selected for v in np.unique(y)))
         model = None
         if len(self.classes) >= 2:
             x = np.concatenate([x for x, _ in selected])
             y = np.concatenate([y for _, y in selected])
             if 0 < local < x.shape[1]:
-                # Columns: `local` pixel-exact image channels, `size` size channels, then encoder
-                # tokens or context. Three quarters of the trees see the image channels with the
+                # Columns: `local` pixel-exact image channels, `size` size channels, then DINO
+                # tokens. Three quarters of the trees see the image channels with the
                 # tokens, a quarter with the size channels (other columns are zeroed; constant
                 # columns are never split on). The image-only quarter keeps a few strokes from
                 # fitting token noise, and size channels in the token trees lowered scores.

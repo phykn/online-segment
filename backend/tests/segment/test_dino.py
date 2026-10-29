@@ -103,16 +103,14 @@ class DinoTests(unittest.TestCase):
             DinoEncoder().load()
         self.assertEqual(error.exception.status_code, 503)
 
-    def test_segmenter_trains_on_dino_and_image_channels_without_cellpose(self):
+    def test_segmenter_trains_on_dino_and_image_channels(self):
         rng = np.random.default_rng(0)
         image = np.zeros((24, 32, 3), np.uint8); image[:, 16:] = 200
         def run(img, progress):
             return Pyramid([Level(rng.normal(size=(3, 4, 8)).astype(np.float16), (1., 1.)),
                             Level(rng.normal(size=(6, 8, 8)).astype(np.float16), (2., 2.))], img.shape[:2])
         labels = np.full((24, 32), -1, np.int8); labels[:, :8] = 0; labels[:, 24:] = 1
-        with patch.object(config.feature, 'kind', 'dino'), patch.object(config.feature, 'cellpose', 'none'), \
-                patch('src.segment.model.dino.run', side_effect=run) as encode, \
-                patch('src.segment.model.runtime.run', side_effect=AssertionError('Cellpose must not run')):
+        with patch.object(config.feature, 'kind', 'dino'), patch('src.segment.model.dino.run', side_effect=run) as encode:
             model = Segmenter()
             model.fit([(image, labels)])
             self.assertEqual(len(model.pca), 2)

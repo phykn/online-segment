@@ -12,7 +12,7 @@ test('unclear restriction maps working pixels to the prediction and rejects miss
   assert.equal(allowsUnclear(null)(0, 0, 4, 2), false)
 })
 
-test('brush preview, committed paint, erasing and region fills only change unclear pixels', () => {
+test('brush preview, committed paint and erasing only change unclear pixels', () => {
   const painter = usePainter(), image = {}
   painter.prepare(image, 4, 2)
   const allows = allowsUnclear({ width: 2, height: 1, data: [0, 1] })
@@ -30,11 +30,6 @@ test('brush preview, committed paint, erasing and region fills only change uncle
   assert.equal(painter.undo(), true)
   assert.equal(getLabelMask(image).labeledCount, 0)
   painter.redo()
-  const instances = { width: 4, height: 2, data: new Int32Array(8).fill(1) }
-  painter.beginStroke(allows)
-  painter.fillInstance(instances, { x: 0, y: 0 }, 3)
-  painter.commitStroke()
-  assert.deepEqual([...getLabelMask(image).data], [-1, -1, 3, 3, -1, -1, 3, 3])
   painter.beginStroke(allows)
   painter.paintCurve(canvas, { x: 0, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 1 }, 10, -1)
   painter.commitStroke()

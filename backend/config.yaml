@@ -3,24 +3,11 @@ server:
   origins: [http://localhost:5173, http://127.0.0.1:5173]
 session:
   max_age: 3600
-cellpose:
-  checkpoint: weights/cpdino-vitb.pth
-  device: auto
-  threads: 6
-  tile_size: 384
-  overlap: 0.1
-  batch_size: 2
-  max_pixels: 16777216
-  flow_threshold: 0.4
-  cellprob_threshold: 0
-  cache_mb: 128
-  min_area: 8
 feature:
   kind: dino
   components: 8
   texture: false
-  flow: true
-  cellpose: none
+  max_pixels: 16777216
   cache_mb: 256
 dino:
   checkpoint: weights/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth
