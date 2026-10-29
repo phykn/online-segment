@@ -87,7 +87,6 @@ const {
   canDownloadResult,
   canDownloadAll,
   downloadProgress: exportProgress,
-  busy,
   clearError,
   clearResult,
   resetModel,
@@ -98,6 +97,8 @@ const {
 } = model
 
 watch(predictionVersion, () => { predictionVisible.value = true })
+// Only exports block other work; a running prediction never does.
+const exporting = computed(() => downloading.value || downloadingAll.value)
 
 // Save, load and crop failures show under the Save/Load buttons; any later action clears both errors.
 const projectError = ref('')
@@ -120,17 +121,17 @@ const canTrain = computed(() => labelRevision.value >= 0
   && labeledClasses(images.value.filter(image => labeledImages.value.has(image))).size >= 2)
 const needsTraining = computed(() => hasLabels.value && !canDownloadResult.value && !predicting.value)
 const canClearUnclear = computed(() => !!workspaceRef.value?.hasUnclearLabels
-  && !busy.value && !projectBusy.value && !cropOpen.value)
+  && !exporting.value && !projectBusy.value && !cropOpen.value)
 
 
 const openCrop = () => {
-  if (!selectedImage.value || busy.value || projectBusy.value) return
+  if (!selectedImage.value || exporting.value || projectBusy.value) return
   clearErrors()
   cropSelection.value = null
   cropOpen.value = true
 }
 const applyCrop = async rect => {
-  if (!selectedImage.value || !rect || busy.value || projectBusy.value) return
+  if (!selectedImage.value || !rect || exporting.value || projectBusy.value) return
   if (hasLabels.value && !window.confirm('Cropping clears this image\'s labels. Crop anyway?')) return
   projectTask.value = 'crop'
   clearErrors()
@@ -146,7 +147,7 @@ const applyCrop = async rect => {
 }
 const cancelCrop = () => { cropOpen.value = false }
 const restoreCrop = () => {
-  if (!canResetCrop.value || cropOpen.value || busy.value || projectBusy.value) return
+  if (!canResetCrop.value || cropOpen.value || exporting.value || projectBusy.value) return
   resetCrop()
   updateEdits()
   clearResult()
@@ -161,7 +162,7 @@ const protectProject = event => {
   event.returnValue = ''
 }
 const saveProject = async () => {
-  if (projectBusy.value || busy.value || !images.value.length) return
+  if (projectBusy.value || exporting.value || !images.value.length) return
   projectTask.value = 'save'
   clearErrors()
   try {
@@ -175,7 +176,7 @@ const saveProject = async () => {
   finally { projectTask.value = '' }
 }
 const openProject = async file => {
-  if (!file || projectBusy.value || busy.value) return
+  if (!file || projectBusy.value || exporting.value) return
   projectTask.value = 'load'
   clearErrors()
   try {
@@ -198,7 +199,7 @@ const openProject = async file => {
 }
 
 const resizeImage = width => {
-  if (busy.value || projectBusy.value || cropOpen.value || width === displayedWidth.value) return
+  if (exporting.value || projectBusy.value || cropOpen.value || width === displayedWidth.value) return
   resizeWidth.value = width
   model.invalidateFeatures()
   clearErrors()
@@ -305,7 +306,7 @@ onBeforeUnmount(() => {
 
 const resetLabels = () => {
   const image = selectedImage.value
-  if (!image || downloading.value || downloadingAll.value) return
+  if (!image || exporting.value) return
 
   workspaceRef.value?.resetLabels()
   clearErrors()
@@ -319,7 +320,7 @@ const clearUnclear = () => {
 
 // Files that cannot be decoded or are already listed are left out, and the user is told which.
 const addFiles = async (fileList) => {
-  if (busy.value || projectBusy.value || cropOpen.value) return
+  if (exporting.value || projectBusy.value || cropOpen.value) return
   const { uniqueFiles, duplicateFiles } = filterNewImages(fileList, images.value)
   const readable = await Promise.all(uniqueFiles.map(canDecodeImage))
   const validFiles = uniqueFiles.filter((_, index) => readable[index])
@@ -343,7 +344,7 @@ const removeAt = (index) => {
 }
 
 const clearAllImages = () => {
-  if (busy.value || images.value.length === 0) return
+  if (exporting.value || images.value.length === 0) return
   const count = images.value.length
   if (!window.confirm(`Remove all ${count} image${count === 1 ? '' : 's'} and their labels?`)) return
 
@@ -367,7 +368,7 @@ const selectAt = (index) => {
 
 // Steps through every image; the list filter follows the selection.
 const stepImage = (step) => {
-  if (downloading.value || downloadingAll.value) return
+  if (exporting.value) return
   const index = selectedIndex.value + step
   if (images.value[index]) selectAt(index)
 }
@@ -390,8 +391,8 @@ const handleLabelState = (state) => {
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
       v-model:filter="listFilter"
-      :busy="busy || projectBusy || cropOpen"
-      :select-busy="downloading || downloadingAll || projectBusy || cropOpen"
+      :busy="exporting || projectBusy || cropOpen"
+      :select-busy="exporting || projectBusy || cropOpen"
       :downloading="downloading"
       :downloading-all="downloadingAll"
       :download-progress="exportProgress"
@@ -408,7 +409,7 @@ const handleLabelState = (state) => {
     <div class="editor-main">
       <Toolbar
         :selected-label="selectedLabel"
-        :can-reset="hasLabels && !busy && !projectBusy && !cropOpen"
+        :can-reset="hasLabels && !exporting && !projectBusy && !cropOpen"
         :can-clear-unclear="canClearUnclear"
         @reset-labels="resetLabels"
         @clear-unclear="clearUnclear"
@@ -437,7 +438,7 @@ const handleLabelState = (state) => {
         :edits-opacity="editsOpacity"
         :unclear-only="unclearOnly"
         :preview-unclear-clear="previewUnclear && canClearUnclear"
-        :busy="downloading || downloadingAll || projectBusy"
+        :busy="exporting || projectBusy"
         @add-files="addFiles"
         @crop-selection="cropSelection = $event"
         @image-size="originalWidth = $event.width"
@@ -463,7 +464,7 @@ const handleLabelState = (state) => {
       :can-reset-crop="canResetCrop"
       :cropping="cropOpen"
       :has-crop-selection="!!cropSelection"
-      :busy="busy || projectBusy"
+      :busy="exporting || projectBusy"
       :project-task="projectTask"
       :predicting="predicting"
       :needs-training="needsTraining"

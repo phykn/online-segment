@@ -7,7 +7,7 @@ import { makeEdits } from './input.js'
 
 export const useDownloads = ({
   images, selectedImage, resizeWidth, result,
-  canDownloadResult, predicting, error,
+  canDownloadResult, error,
   prepare = async () => {},
 }) => {
   const downloading = ref(false)
@@ -48,7 +48,8 @@ export const useDownloads = ({
       downloadController?.abort()
       return
     }
-    if (!canDownloadAll.value || downloading.value || predicting.value) return
+    // A running prediction is not a blocker: preparing the archive queues behind it.
+    if (!canDownloadAll.value || downloading.value) return
 
     const controller = new AbortController()
     downloadController = controller

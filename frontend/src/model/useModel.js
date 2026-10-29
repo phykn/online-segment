@@ -16,6 +16,10 @@ export const useModel = ({
   let pendingPrediction = null
   let predictionRun = null
   let predictionSequence = 0
+  // Bumped when the model is reset, so a run started before a reset cannot turn prediction back on.
+  let generation = 0
+  // The label revision Space last trained on; pressing it again without edits reuses that training.
+  let appliedRevision = null
   const enabled = ref(false)
   const progress = ref(null)
   const revision = ref(0)
@@ -48,7 +52,7 @@ export const useModel = ({
   )
   const downloads = useDownloads({
     images, selectedImage, resizeWidth, result,
-    canDownloadResult, predicting, error,
+    canDownloadResult, error,
     prepare: async () => {
       updateRevision()
       await predict()
@@ -56,11 +60,6 @@ export const useModel = ({
     },
   })
   const { downloading, downloadingAll } = downloads
-  const busy = computed(() =>
-    predicting.value ||
-    downloading.value ||
-    downloadingAll.value,
-  )
 
   const clearError = () => {
     error.value = ''
@@ -84,6 +83,7 @@ export const useModel = ({
   }
 
   const resetModel = () => {
+    generation += 1
     enabled.value = false
     updateRevision()
     result.value = null
@@ -138,7 +138,7 @@ export const useModel = ({
       })
       // The model trained even if the user moved to another image, so keep the result for when
       // they come back; a result for an old width or old labels is dropped.
-      enabled.value = true
+      if (request.generation === generation) enabled.value = true
       if (!isPredictionFresh(request)) return
       const finished = results.set(request.image, request.width, request.revision, makeResult(response))
       if (!isPredictionCurrent(request)) return
@@ -180,14 +180,19 @@ export const useModel = ({
       width,
       revision: revision.value,
       sequence: ++predictionSequence,
+      generation,
     }
     clearError()
     return drainPredictions()
   }
 
+  // A running prediction does not block Space: the new request waits behind it.
   const apply = async () => {
-    if (busy.value || !selectedImage.value) return
-    updateRevision()
+    if (downloading.value || downloadingAll.value || !selectedImage.value) return
+    if (appliedRevision !== revision.value) {
+      updateRevision()
+      appliedRevision = revision.value
+    }
     await predict()
   }
 
@@ -208,7 +213,6 @@ export const useModel = ({
     uncertaintyMask,
     predictionVersion,
     canDownloadResult,
-    busy,
     clearError,
     clearResult,
     resetModel,

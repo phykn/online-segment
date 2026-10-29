@@ -377,3 +377,58 @@ test('session replacement clears cached results without discarding the retried p
     assert.equal(model.error.value, '')
   } finally { globalThis.fetch = originalFetch; browser.restore(); resetSession() }
 })
+
+test('Space during a running prediction waits behind it, and a repeat without edits reuses the training', async () => {
+  resetSession()
+  const browser = installBrowserMocks(), originalFetch = globalThis.fetch
+  const first = deferred(), started = deferred(), requests = []
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === '/api/sessions') return Response.json({ id: 'queued-space' })
+    requests.push(JSON.parse(options.body))
+    if (requests.length === 1) { started.resolve(); return first.promise }
+    return Response.json(prediction(1))
+  }
+  const image = namedBlob('sample.png'), { model } = makeModel(image)
+  let running
+  try {
+    running = model.predict()
+    await started.promise
+    const space = model.apply()
+    first.resolve(Response.json(prediction(0)))
+    await Promise.all([running, space])
+    assert.equal(requests.length, 2)
+    assert.equal(model.canDownloadResult.value, true)
+    await model.apply()
+    assert.equal(requests.length, 2)
+  } finally {
+    first.resolve(Response.json(prediction()))
+    await running
+    globalThis.fetch = originalFetch; browser.restore(); resetSession()
+  }
+})
+
+test('a prediction started before a model reset does not turn prediction back on', async () => {
+  resetSession()
+  const browser = installBrowserMocks(), originalFetch = globalThis.fetch
+  const first = deferred(), started = deferred()
+  globalThis.fetch = async (url) => {
+    if (url === '/api/sessions') return Response.json({ id: 'reset-during-run' })
+    started.resolve()
+    return first.promise
+  }
+  const image = namedBlob('sample.png'), { model } = makeModel(image)
+  let running
+  try {
+    running = model.apply()
+    await started.promise
+    model.resetModel()
+    first.resolve(Response.json(prediction(0)))
+    await running
+    assert.equal(model.enabled.value, false)
+    assert.equal(model.resultImage.value, '')
+  } finally {
+    first.resolve(Response.json(prediction()))
+    await running
+    globalThis.fetch = originalFetch; browser.restore(); resetSession()
+  }
+})

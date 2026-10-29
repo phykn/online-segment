@@ -15,7 +15,7 @@ const setup = () => {
   const downloads = useDownloads({
     images: ref([image]), selectedImage: ref(image), resizeWidth: ref(null),
     result: ref({ image, mask }),
-    canDownloadResult: ref(true), predicting: ref(false), error,
+    canDownloadResult: ref(true), error,
   })
   return { downloads, error, mask }
 }
