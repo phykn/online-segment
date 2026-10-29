@@ -76,7 +76,6 @@ class ClassifierTests(unittest.TestCase):
         self.assertEqual(result[2]['training_samples'], 16)
         self.assertEqual(result[2]['training_samples_by_class'], [0, 8, 8] + [0]*7)
         self.assertEqual(result[2]['message'], '')
-        self.assertEqual(result[3], [])
         self.assertEqual(len(segmenter.features.values), 1)
 
     def test_class_zero_can_represent_the_same_material_as_any_other_class(self):

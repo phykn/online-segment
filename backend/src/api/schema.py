@@ -32,7 +32,6 @@ class PredResponse(BaseModel):
     mask: Mask
     uncertain: Mask
     summary: dict
-    particles: list[dict]
 
 
 class ExportJobRequest(BaseModel):

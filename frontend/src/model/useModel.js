@@ -22,9 +22,8 @@ export const useModel = ({
   // The label revision Space last trained on; pressing it again without edits reuses that training.
   let appliedRevision = null
   const enabled = ref(false)
-  const progress = ref(null)
   // How far the running prediction has got, from 0 to 1; it only moves forward within a run.
-  const progressShare = ref(0)
+  const progress = ref(0)
   const revision = ref(0)
   const error = ref('')
   const result = ref(null)
@@ -139,16 +138,13 @@ export const useModel = ({
       const image = await encodeModelImage(request.image)
       const training = await makeTraining(images.value)
       if (!isPredictionCurrent(request)) return
-      progress.value = { stage: 'waiting', done: 0, total: 0 }
-      progressShare.value = 0
+      progress.value = 0
       const response = await predictImage(image, {
         width: request.width,
         edits: makeEdits(request.image),
         training,
       }, (state) => {
-        if (!isPredictionCurrent(request)) return
-        progress.value = state
-        progressShare.value = Math.max(progressShare.value, runShare(state))
+        if (isPredictionCurrent(request)) progress.value = Math.max(progress.value, runShare(state))
       })
       // The model trained even if the user moved to another image, so keep the result for when
       // they come back; a result for an old width or old labels is not kept.
@@ -184,8 +180,7 @@ export const useModel = ({
       } finally {
         predicting.value = false
         predictionRun = null
-        progress.value = null
-        progressShare.value = 0
+        progress.value = 0
       }
     })()
     return predictionRun
@@ -227,7 +222,6 @@ export const useModel = ({
     predicting,
     enabled,
     progress,
-    progressShare,
     updateEdits,
     error,
     resultImage,

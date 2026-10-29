@@ -79,7 +79,7 @@ const {
   uncertaintyMask,
   predictionVersion,
   predicting,
-  progressShare,
+  progress: predictionProgress,
   canDownloadResult,
   canDownloadAll,
   downloadProgress: exportProgress,
@@ -445,9 +445,8 @@ const handleLabelState = (state) => {
         :result-mask="resultMask"
         :uncertainty-image="uncertaintyImage"
         :uncertainty-mask="uncertaintyMask"
-        :prediction-version="predictionVersion"
         :predicting="predicting"
-        :prediction-progress="progressShare"
+        :prediction-progress="predictionProgress"
         :prediction-visible="predictionVisible"
         :edits-visible="editsVisible"
         :prediction-opacity="predictionOpacity"

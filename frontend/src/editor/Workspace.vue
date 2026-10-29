@@ -25,7 +25,6 @@ const props = defineProps({
   unclearOnly: { type: Boolean, default: false },
   previewUnclearClear: { type: Boolean, default: false },
   resultMask: { type: Object, default: null },
-  predictionVersion: { type: Number, default: 0 },
   predicting: { type: Boolean, default: false },
   predictionProgress: { type: Number, default: 0 },
   uncertaintyMask: { type: Object, default: null },

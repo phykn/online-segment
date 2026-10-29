@@ -29,7 +29,7 @@ class RouterTests(unittest.TestCase):
         payload=PredRequest(image='encoded',width=4)
         labels=np.array([[0,1,2,0]],np.int8);uncertain=np.zeros_like(labels)
         with patch('src.api.model.read_image',return_value=np.zeros((2,8,3),np.uint8)), patch(
-                'src.api.model.prediction.infer',return_value=(labels,uncertain,{'total':2},[])) as run:
+                'src.api.model.prediction.infer',return_value=(labels,uncertain,{'total':2})) as run:
             response=predict(payload,session)
         self.assertEqual(run.call_args.args[0].shape,(1,4,3))
         self.assertEqual(response.mask.runs,[(0,1),(1,1),(2,1),(0,1)])

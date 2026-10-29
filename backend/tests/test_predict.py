@@ -12,7 +12,6 @@ class PredictTests(unittest.TestCase):
         result = infer(image, Segmenter())
         self.assertTrue((result[0] == -1).all())
         self.assertEqual(result[2]['unlabeled_pixels'], 72)
-        self.assertEqual(result[3], [])
 
     def test_single_class_annotations_are_training_data_not_final_predictions(self):
         edits = np.full((4, 6), -1, np.int8); edits[0] = 0

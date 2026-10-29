@@ -15,10 +15,6 @@ defineProps({
     required: true,
   },
   selectBusy: { type: Boolean, default: false },
-  busy: {
-    type: Boolean,
-    required: true,
-  },
 })
 
 const emit = defineEmits(['select'])

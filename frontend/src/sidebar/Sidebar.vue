@@ -141,7 +141,6 @@ const handleDragLeave = (event) => {
       :images="images"
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
-      :busy="props.busy"
       :select-busy="selectBusy"
       @select="emit('select-image', $event)"
     />

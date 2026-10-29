@@ -39,7 +39,7 @@ export const VIEW_KEYS = Object.freeze({
 export const SIDEBAR_COLLAPSE_WIDTH = 1100
 export const IMAGE_WIDTH = 768
 
-export const LABEL_ALPHA = 230
+const LABEL_ALPHA = 230
 
 // Darker brush outline so the cursor stays visible over its own color.
 const CURSOR_SHADE = 0.75

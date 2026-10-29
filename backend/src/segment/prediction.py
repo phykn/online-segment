@@ -28,7 +28,7 @@ def infer(image, segmenter, edits=None, progress=None, train=True):
             device='cuda' if classifier.cuda is not None else 'cpu',
             message=message)
         report(stage='ready', done=1, total=1)
-        return labels, uncertain, summary, []
+        return labels, uncertain, summary
     except Exception:
         segmenter.report(stage='error', done=0, total=0)
         raise

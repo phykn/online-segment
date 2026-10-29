@@ -29,7 +29,7 @@ def predict(payload: PredRequest, session: SessionDep) -> PredResponse:
                     mask = resize(decode(item.edits), resized.shape[1], resized.shape[0])
                     records[session.segmenter.key(resized)] = (resized, mask)
                 session.segmenter.fit(list(records.values()))
-            labels, uncertain, summary, particles = prediction.infer(
+            labels, uncertain, summary = prediction.infer(
                 image, session.segmenter, edits,
                 train=payload.training is None)
         except Exception:
@@ -38,4 +38,4 @@ def predict(payload: PredRequest, session: SessionDep) -> PredResponse:
     return PredResponse(
         mask=Mask.model_validate(encode(labels), from_attributes=True),
         uncertain=Mask.model_validate(encode(uncertain), from_attributes=True),
-        summary=summary, particles=particles)
+        summary=summary)
