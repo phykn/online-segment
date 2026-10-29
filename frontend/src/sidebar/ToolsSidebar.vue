@@ -58,9 +58,11 @@ const trainTitle = computed(() => !props.canTrain ? 'Paint at least two classes 
 // Says why the button is filled.
 const dueTitle = computed(() => props.needsTraining && !trainDisabled.value
   ? 'Your latest labels are not trained yet' : undefined)
-// The rail's icon needs its name first.
-const railTitle = computed(() => trainTitle.value
-  ?? 'Train & predict (Space)' + (dueTitle.value ? '\n' + dueTitle.value : ''))
+const unclearTitle = computed(() => props.hasUnclear
+  ? 'Brush paints only where the prediction is uncertain; the rest is shaded'
+  : props.hasPrediction ? 'This prediction has no uncertain areas' : NO_PREDICTION)
+// A rail icon's tooltip names it and its key, then says why it is filled or disabled.
+const railTitle = (name, reason) => name + (reason ? '\n' + reason : '')
 const views = [
   { name: 'Labels', key: VIEW_KEYS.edits, visible: 'editsVisible', opacity: 'editsOpacity', event: 'edits' },
   { name: 'Prediction', key: VIEW_KEYS.prediction, visible: 'predictionVisible', opacity: 'predictionOpacity', event: 'prediction' },
@@ -81,16 +83,22 @@ const setOpacity = (view, value) => {
       </button>
       <!-- Training stays one click away, with its state, while the tools are hidden. -->
       <button class="sidebar__train" :class="{ 'train-button--due': needsTraining }" type="button" :disabled="trainDisabled"
-        aria-label="Train & predict" :title="railTitle" @click="emit('train')">
+        aria-label="Train & predict" :title="railTitle('Train & predict (Space)', trainTitle ?? dueTitle)" @click="emit('train')">
         <span v-if="predicting" class="spinner" aria-hidden="true"></span>
         <svg v-else viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5L8 5.5Z" /></svg>
       </button>
+      <!-- Uncertain only shows, and turns, on the rail too: the shaded image alone does not say why. -->
+      <button class="sidebar__unclear" type="button" :aria-pressed="unclearOnly && hasUnclear" :disabled="!hasUnclear"
+        aria-label="Uncertain only" :title="railTitle('Uncertain only (' + VIEW_KEYS.unclear + ')', unclearTitle)"
+        @click="emit('update:unclear-only', !unclearOnly)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+          <circle cx="12" cy="12" r="7.5" stroke-dasharray="2.6 2.2" /><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none" />
+        </svg>
+      </button>
     </template>
     <div v-show="!collapsed" class="sidebar__tools-content">
+      <!-- The hide button sits where the rail's show button was, so a second click closes what the first opened. -->
       <div class="tools-header">
-        <button class="sidebar__open" type="button" aria-label="Hide tools" title="Hide tools" @click="collapsed = true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
-        </button>
         <button class="model-button busy-button" type="button" :disabled="busy || cropping || !images.length"
           title="Save images and labels to a project file" @click="emit('save-project')">
           Save<span v-if="projectTask === 'save'" class="spinner" aria-hidden="true"></span>
@@ -101,6 +109,9 @@ const setOpacity = (view, value) => {
         <button class="model-button busy-button" type="button" :disabled="busy || cropping"
           title="Load a saved project file" @click="projectInput.click()">
           Load<span v-if="projectTask === 'load'" class="spinner" aria-hidden="true"></span>
+        </button>
+        <button class="sidebar__open" type="button" aria-label="Hide tools" title="Hide tools" @click="collapsed = true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
         </button>
       </div>
       <p v-if="projectError" class="model-error tools-error" role="alert">{{ projectError }}</p>
@@ -182,9 +193,7 @@ const setOpacity = (view, value) => {
 
       <section class="tool-group" aria-labelledby="reach-group">
         <h2 id="reach-group">Paint</h2>
-        <label class="switch"
-          :title="hasUnclear ? 'Brush paints only where the prediction is uncertain; the rest is shaded'
-            : hasPrediction ? 'This prediction has no uncertain areas' : NO_PREDICTION">
+        <label class="switch" :title="unclearTitle">
           <input type="checkbox" :checked="unclearOnly && hasUnclear" :disabled="!hasUnclear"
             @change="emit('update:unclear-only', $event.target.checked)" />
           <span class="switch__track" aria-hidden="true"><span></span></span>

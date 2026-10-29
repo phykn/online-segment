@@ -32,7 +32,7 @@ const emit = defineEmits([
         <kbd class="key-hint">{{ label.key }}</kbd>
       </button>
       <button
-        class="label-chip"
+        class="label-chip label-chip--eraser"
         type="button"
         aria-label="Eraser"
         title="Eraser"

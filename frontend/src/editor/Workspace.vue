@@ -27,6 +27,7 @@ const props = defineProps({
   resultMask: { type: Object, default: null },
   predictionVersion: { type: Number, default: 0 },
   predicting: { type: Boolean, default: false },
+  predictionProgress: { type: Number, default: 0 },
   uncertaintyMask: { type: Object, default: null },
   image: {
     type: File,
@@ -459,7 +460,7 @@ defineExpose({
         <div ref="controlsRef" class="workspace__controls">
         <!-- Hidden but still taking its room while cropping, so the image does not shift. -->
         <ClassRatio :style="{ visibility: cropping ? 'hidden' : null }" :counts="classCounts"
-          :source="resultMask ? 'Prediction' : 'Labels'" :predicting="predicting" :name="image?.name" :size="editorSize" />
+          :source="resultMask ? 'Prediction' : 'Labels'" :predicting="predicting" :progress="predictionProgress" :name="image?.name" :size="editorSize" />
         </div>
       </div>
       <p v-if="errorMessage" class="workspace__error" role="alert">

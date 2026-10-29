@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { predictImage } from '../api/model.js'
 import { makeResult } from '../output/raster.js'
 import { encodeModelImage, makeEdits, makeTraining } from './input.js'
+import { runShare } from './progress.js'
 import { isCurrent, ResultCache } from './results.js'
 import { useDownloads } from './useDownloads.js'
 import { decodeMask } from './masks.js'
@@ -22,6 +23,8 @@ export const useModel = ({
   let appliedRevision = null
   const enabled = ref(false)
   const progress = ref(null)
+  // How far the running prediction has got, from 0 to 1; it only moves forward within a run.
+  const progressShare = ref(0)
   const revision = ref(0)
   const error = ref('')
   const result = ref(null)
@@ -137,12 +140,15 @@ export const useModel = ({
       const training = await makeTraining(images.value)
       if (!isPredictionCurrent(request)) return
       progress.value = { stage: 'waiting', done: 0, total: 0 }
+      progressShare.value = 0
       const response = await predictImage(image, {
         width: request.width,
         edits: makeEdits(request.image),
         training,
       }, (state) => {
-        if (isPredictionCurrent(request)) progress.value = state
+        if (!isPredictionCurrent(request)) return
+        progress.value = state
+        progressShare.value = Math.max(progressShare.value, runShare(state))
       })
       // The model trained even if the user moved to another image, so keep the result for when
       // they come back; a result for an old width or old labels is not kept.
@@ -179,6 +185,7 @@ export const useModel = ({
         predicting.value = false
         predictionRun = null
         progress.value = null
+        progressShare.value = 0
       }
     })()
     return predictionRun
@@ -220,6 +227,7 @@ export const useModel = ({
     predicting,
     enabled,
     progress,
+    progressShare,
     updateEdits,
     error,
     resultImage,

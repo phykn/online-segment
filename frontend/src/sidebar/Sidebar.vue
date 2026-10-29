@@ -75,6 +75,7 @@ const shortcutGroups = [
     { keys: [[VIEW_KEYS.fit]], action: 'Zoom to fit' },
     { keys: [['Wheel'], ['Middle drag']], action: 'Pan when zoomed' },
     { keys: [['Enter'], ['Esc']], action: 'Apply or cancel a crop' },
+    { keys: [['Tab']], action: 'Move between controls' },
     { keys: [['?']], action: 'Show shortcuts' },
   ],
 ]
@@ -158,7 +159,11 @@ const handleDragLeave = (event) => {
       @change="handleFileSelect"
     />
 
+    <!-- The hide button sits where the rail's show button was, so a second click closes what the first opened. -->
     <div class="sidebar__upload-row">
+    <button class="sidebar__open" type="button" aria-label="Hide image list" title="Hide image list" @click="collapsed = true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+    </button>
     <button
       class="upload-button"
       :class="{ 'upload-button--dragging': isDragging }"
@@ -182,9 +187,6 @@ const handleDragLeave = (event) => {
         <path d="M5 14v5h14v-5" />
       </svg>
       <span class="upload-button__title">Add images</span>
-    </button>
-    <button class="sidebar__open" type="button" aria-label="Hide image list" title="Hide image list" @click="collapsed = true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
     </button>
     </div>
 

@@ -199,7 +199,7 @@ button {
 @container (max-width: 599px) {
   .editor-toolbar {
     display: grid;
-    grid-template-columns: repeat(7, auto);
+    grid-template-columns: repeat(7, 1fr);
     justify-items: center;
   }
 
@@ -211,7 +211,7 @@ button {
 /* Narrower still: classes 1–5 and 6–0 on two rows, the eraser and clear buttons on a third. */
 @container (max-width: 339px) {
   .editor-toolbar {
-    grid-template-columns: repeat(5, auto);
+    grid-template-columns: repeat(5, 1fr);
   }
 }
 
@@ -364,6 +364,7 @@ button {
 /* Data bar: attached under the image like the readout strip of a micrograph. */
 
 .class-ratio {
+  position: relative;
   width: min(100%, var(--view-width, 640px));
   margin: 0;
   color: var(--readout-text);
@@ -412,6 +413,15 @@ button {
   height: 12px;
   border-color: rgb(255 255 255 / 30%);
   border-top-color: var(--paper);
+}
+
+.class-ratio__progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--paper);
+  transition: width 0.4s ease-out;
 }
 
 .class-ratio__list {
@@ -689,6 +699,7 @@ button {
 
 .sidebar__open,
 .sidebar__train,
+.sidebar__unclear,
 .sidebar__help {
   display: grid;
   width: var(--control);
@@ -705,24 +716,35 @@ button {
 
 .sidebar__open:hover,
 .sidebar__help:hover,
-.sidebar__train:hover:not(:disabled, .train-button--due) {
+.sidebar__train:hover:not(:disabled, .train-button--due),
+.sidebar__unclear:hover:not(:disabled, [aria-pressed="true"]) {
   background: var(--wash);
 }
 
 .sidebar__open svg,
-.sidebar__train svg {
+.sidebar__train svg,
+.sidebar__unclear svg {
   width: 16px;
   height: 16px;
 }
 
 /* On the collapsed tools rail, under the open button. */
-.sidebar__train {
+.sidebar__train,
+.sidebar__unclear {
   margin-top: 8px;
 }
 
-.sidebar__train:disabled {
+.sidebar__train:disabled,
+.sidebar__unclear:disabled {
   cursor: default;
   opacity: 0.4;
+}
+
+/* Filled while Uncertain only is on, as a selected class chip is. */
+.sidebar__unclear[aria-pressed="true"]:not(:disabled) {
+  border-color: var(--ink);
+  color: var(--paper);
+  background: var(--ink);
 }
 
 /* At the foot of the collapsed image rail, where the expanded sidebar keeps its ? button, with or
@@ -1097,7 +1119,7 @@ button {
 
 .tools-header {
   display: grid;
-  grid-template-columns: var(--control) 1fr 1fr;
+  grid-template-columns: 1fr 1fr var(--control);
   gap: 8px;
 }
 
@@ -1340,8 +1362,18 @@ button {
     transform: rotate(90deg);
   }
 
+  /* The tools panel opens upward from the foot of the screen, so its arrow points up to open and down to
+     close, and its hide button leads the header, where the bar's show button was. */
   .sidebar--tools .sidebar__open svg {
-    transform: rotate(-90deg);
+    transform: rotate(90deg);
+  }
+
+  .tools-header {
+    grid-template-columns: var(--control) 1fr 1fr;
+  }
+
+  .tools-header .sidebar__open {
+    order: -1;
   }
 
   .sidebar.sidebar--collapsed {
@@ -1353,7 +1385,8 @@ button {
     padding: 0 12px;
   }
 
-  .sidebar--collapsed .sidebar__train {
+  .sidebar--collapsed .sidebar__train,
+  .sidebar--collapsed .sidebar__unclear {
     margin: 0 0 0 8px;
   }
 
@@ -1395,5 +1428,18 @@ button {
   /* On a phone the image sits right under the palette, with no empty band to cross between them. */
   .workspace__editor {
     grid-template-rows: 0 auto minmax(min-content, 1fr);
+  }
+}
+
+/* Touch screens with no keyboard: key hints and the shortcut list have nothing to act on. The class numbers
+   stay, since the data bar names classes by them. */
+@media (hover: none) and (pointer: coarse) {
+  .shortcut-keys,
+  .switch .key-hint,
+  .key-button kbd,
+  .label-chip--eraser .key-hint,
+  .sidebar__help,
+  .help-button {
+    display: none;
   }
 }

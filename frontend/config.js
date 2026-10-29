@@ -76,6 +76,15 @@ export const VIEW = Object.freeze({
   ratioDigits: 1,
 })
 
+// Where each stage the backend reports sits in a prediction run, as the [start, end] share of the line that
+// shows its progress under the image; a stage that counts (features by scale, prediction by tile) fills its span.
+export const PREDICTION_STAGES = Object.freeze({
+  features: [0.05, 0.6],
+  pca: [0.6, 0.65],
+  training: [0.65, 0.75],
+  predicting: [0.75, 1],
+})
+
 export const EXPORT = Object.freeze({
   batchFiles: 16,
   batchBytes: 128 * 1024 * 1024,

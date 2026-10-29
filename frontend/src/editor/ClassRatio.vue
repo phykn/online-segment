@@ -10,6 +10,8 @@ const props = defineProps({
   source: { type: String, default: '' },
   // A running prediction shows here, ahead of the source, so nothing covers the image.
   predicting: { type: Boolean, default: false },
+  // How far that prediction has got, from 0 to 1.
+  progress: { type: Number, default: 0 },
   name: { type: String, default: '' },
   size: { type: Object, default: null },
 })
@@ -45,5 +47,8 @@ const percent = share => (share * 100).toFixed(VIEW.ratioDigits) + '%'
         {{ name }}<span v-if="size" class="class-ratio__size">{{ size.width }} × {{ size.height }} px</span>
       </span>
     </figcaption>
+    <!-- The run's progress, as a line along the foot of the bar rather than another status text. -->
+    <span v-if="predicting && progress" class="class-ratio__progress" :style="{ width: progress * 100 + '%' }"
+      aria-hidden="true"></span>
   </figure>
 </template>
