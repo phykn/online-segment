@@ -34,7 +34,7 @@ export const VIEW_KEYS = Object.freeze({
   unclear: 'U',
 })
 
-// Below this window width (but above the stacked phone layout) both sidebars start collapsed.
+// At or below this window width both sidebars start collapsed, so the canvas gets the room.
 export const SIDEBAR_COLLAPSE_WIDTH = 960
 export const IMAGE_WIDTH = 768
 

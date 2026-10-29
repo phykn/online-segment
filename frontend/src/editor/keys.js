@@ -7,6 +7,7 @@ export const keyAction = (code, key = '') => {
   if (label >= 0) return { name: 'label', value: label }
   if (code === 'Key' + ERASER_KEY) return { name: 'eraser' }
   if (code === 'Space') return { name: 'apply' }
+  if (key === '?') return { name: 'help' }
   if (code === 'Key' + VIEW_KEYS.edits) return { name: 'toggle-edits' }
   if (code === 'Key' + VIEW_KEYS.prediction) return { name: 'toggle-prediction' }
   if (code === 'Key' + VIEW_KEYS.unclear) return { name: 'toggle-unclear' }

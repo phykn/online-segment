@@ -21,6 +21,8 @@ import { readProject, writeProject } from './project/file.js'
 import { saveBlob } from './output/download.js'
 import { hasImageLabels, labeledClasses } from './editor/masks.js'
 import { cropImage } from './images/crop.js'
+import { canDecodeImage } from './images/decode.js'
+import { filterNewImages } from './images/files.js'
 
 const resizeWidth = ref(IMAGE_WIDTH)
 const originalWidth = ref(null)
@@ -246,6 +248,8 @@ const handleShortcut = (event) => {
     if (!event.repeat && resultImage.value) predictionVisible.value = !predictionVisible.value
   } else if (action.name === 'toggle-unclear') {
     if (!event.repeat && uncertaintyMask.value) unclearOnly.value = !unclearOnly.value
+  } else if (action.name === 'help') {
+    if (!event.repeat) document.getElementById('shortcut-help')?.togglePopover()
   } else if (action.name === 'previous-image') {
     stepImage(-1)
   } else if (action.name === 'next-image') {
@@ -313,6 +317,21 @@ const clearUnclear = () => {
   clearErrors()
 }
 
+// Files that cannot be decoded or are already listed are left out, and the user is told which.
+const addFiles = async (fileList) => {
+  if (busy.value || projectBusy.value || cropOpen.value) return
+  const { uniqueFiles, duplicateFiles } = filterNewImages(fileList, images.value)
+  const readable = await Promise.all(uniqueFiles.map(canDecodeImage))
+  const validFiles = uniqueFiles.filter((_, index) => readable[index])
+  const skipped = [
+    ...uniqueFiles.filter((_, index) => !readable[index]).map(file => file.name + ' (not a readable image)'),
+    ...duplicateFiles.map(file => file.name + ' (already added)'),
+  ]
+
+  if (validFiles.length) addImages(validFiles)
+  if (skipped.length) window.alert('Skipped:\n' + skipped.join('\n'))
+}
+
 const removeAt = (index) => {
   const image = images.value[index]
   if (!image) return
@@ -339,18 +358,18 @@ const selectAt = (index) => {
 
   selectImage(index)
   clearErrors()
-  if (enabled.value) {
+  if (enabled.value || predicting.value) {
     void predict(image)
   } else {
     clearResult()
   }
 }
 
+// Steps through every image; the list filter follows the selection.
 const stepImage = (step) => {
-  if (busy.value) return
-  const visible = images.value.filter(image => filterOf(image) === listFilter.value)
-  const next = visible[visible.indexOf(selectedImage.value) + step]
-  if (next) selectAt(images.value.indexOf(next))
+  if (downloading.value || downloadingAll.value) return
+  const index = selectedIndex.value + step
+  if (images.value[index]) selectAt(index)
 }
 
 const handleLabelState = (state) => {
@@ -372,6 +391,7 @@ const handleLabelState = (state) => {
       :labeled-images="labeledImages"
       v-model:filter="listFilter"
       :busy="busy || projectBusy || cropOpen"
+      :select-busy="downloading || downloadingAll || projectBusy || cropOpen"
       :downloading="downloading"
       :downloading-all="downloadingAll"
       :download-progress="exportProgress"
@@ -380,7 +400,7 @@ const handleLabelState = (state) => {
       :can-download-all="canDownloadAll && canTrain"
       @download="downloadResult"
       @download-all="downloadAll"
-      @add-images="addImages"
+      @add-images="addFiles"
       @clear-images="clearAllImages"
       @remove-image="removeAt"
       @select-image="selectAt"
@@ -418,6 +438,7 @@ const handleLabelState = (state) => {
         :unclear-only="unclearOnly"
         :preview-unclear-clear="previewUnclear && canClearUnclear"
         :busy="downloading || downloadingAll || projectBusy"
+        @add-files="addFiles"
         @crop-selection="cropSelection = $event"
         @image-size="originalWidth = $event.width"
         @label-state-change="handleLabelState"

@@ -66,15 +66,6 @@ export const useModel = ({
     error.value = ''
   }
 
-  const setResult = (image, width, version, response) => {
-    result.value = results.set(
-      image,
-      width,
-      version,
-      makeResult(response),
-    )
-  }
-
   const clearResult = (image = null) => {
     if (image) {
       results.delete(image)
@@ -109,12 +100,15 @@ export const useModel = ({
     result.value = null
   }
 
-  const isPredictionCurrent = (request) =>
-    request.sequence === predictionSequence &&
+  const isPredictionFresh = (request) =>
     images.value.includes(request.image) &&
-    selectedImage.value === request.image &&
     resizeWidth.value === request.width &&
     revision.value === request.revision
+
+  const isPredictionCurrent = (request) =>
+    request.sequence === predictionSequence &&
+    selectedImage.value === request.image &&
+    isPredictionFresh(request)
 
   const runPrediction = async (request) => {
     try {
@@ -142,14 +136,13 @@ export const useModel = ({
       }, (state) => {
         if (isPredictionCurrent(request)) progress.value = state
       })
-      if (!isPredictionCurrent(request)) return
+      // The model trained even if the user moved to another image, so keep the result for when
+      // they come back; a result for an old width or old labels is dropped.
       enabled.value = true
-      setResult(
-        request.image,
-        request.width,
-        request.revision,
-        response,
-      )
+      if (!isPredictionFresh(request)) return
+      const finished = results.set(request.image, request.width, request.revision, makeResult(response))
+      if (!isPredictionCurrent(request)) return
+      result.value = finished
       predictionVersion.value += 1
     } catch (err) {
       if (isPredictionCurrent(request)) error.value = err.message

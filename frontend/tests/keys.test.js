@@ -90,5 +90,6 @@ test('recognizes undo and redo shortcuts', () => {
     true,
   )
   assert.equal(isRedoShortcut({ code: 'KeyY', ctrlKey: true, shiftKey: false }), true)
+  assert.deepEqual(keyAction('Slash', '?'), { name: 'help' })
   assert.equal(isRedoShortcut({ code: 'KeyY', metaKey: true, shiftKey: false }), false)
 })

@@ -60,7 +60,12 @@ export const useCanvasInput = ({
   const wheel = (event) => {
     if (!canEdit()) return
     const action = wheelAction(event)
-    if (!action) return
+    if (!action) {
+      if (viewport.panBy(event.shiftKey ? event.deltaY : event.deltaX, event.shiftKey ? 0 : event.deltaY)) {
+        event.preventDefault()
+      }
+      return
+    }
 
     event.preventDefault()
     if (action === 'zoom') {

@@ -147,6 +147,17 @@ export const useViewport = (canvasRef, getBrushSize, sharedPan = null) => {
     return true
   }
 
+  // A plain wheel or two-finger scroll moves a zoomed canvas.
+  const panBy = (dx, dy) => {
+    if (zoom.value === ZOOM.min) return false
+    panX.value -= dx
+    panY.value -= dy
+    const bounds = canvasRef.value.getBoundingClientRect()
+    clampPan(bounds.width / zoom.value, bounds.height / zoom.value)
+    hideCursor()
+    return true
+  }
+
   const stopPan = () => {
     panning.value = false
     lastPanPoint = null
@@ -163,6 +174,7 @@ export const useViewport = (canvasRef, getBrushSize, sharedPan = null) => {
     handleZoomWheel,
     hideCursor,
     movePan,
+    panBy,
     reset,
     setZoom,
     startPan,

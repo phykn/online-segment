@@ -1,8 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 
-import { canDecodeImage } from '../images/decode'
-import { filterNewImages, IMAGE_FILE_ACCEPT } from '../images/files'
+import { IMAGE_FILE_ACCEPT } from '../images/files'
 import { startsCollapsed } from './collapse.js'
 import ImageList from './ImageList.vue'
 import MiniList from './MiniList.vue'
@@ -32,6 +31,8 @@ const props = defineProps({
     type: Boolean,
     required: true,
   },
+  // Picking another image stays open while a prediction runs.
+  selectBusy: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -59,19 +60,8 @@ const openFilePicker = () => {
   fileInput.value?.click()
 }
 
-// Files that cannot be decoded or are already listed are left out, and the user is told which.
-const addFiles = async (fileList) => {
-  if (props.busy) return
-  const { uniqueFiles, duplicateFiles } = filterNewImages(fileList, props.images)
-  const readable = await Promise.all(uniqueFiles.map(canDecodeImage))
-  const validFiles = uniqueFiles.filter((_, index) => readable[index])
-  const skipped = [
-    ...uniqueFiles.filter((_, index) => !readable[index]).map(file => file.name + ' (not a readable image)'),
-    ...duplicateFiles.map(file => file.name + ' (already added)'),
-  ]
-
-  if (validFiles.length) emit('add-images', validFiles)
-  if (skipped.length) window.alert('Skipped:\n' + skipped.join('\n'))
+const addFiles = (fileList) => {
+  if (!props.busy) emit('add-images', fileList)
 }
 
 const handleFileSelect = (event) => {
@@ -123,6 +113,7 @@ const handleDragLeave = (event) => {
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
       :busy="props.busy"
+      :select-busy="selectBusy"
       @select="emit('select-image', $event)"
     />
 
@@ -182,6 +173,7 @@ const handleDragLeave = (event) => {
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
       :busy="props.busy"
+      :select-busy="selectBusy"
       @add-files="addFiles"
       @select="emit('select-image', $event)"
       @remove="emit('remove-image', $event)"
@@ -190,7 +182,7 @@ const handleDragLeave = (event) => {
     </template>
     <div v-show="!collapsed" class="sidebar__batch-controls">
       <div class="button-pair">
-        <button class="model-button" type="button" :disabled="busy || !images.length" title="Remove every image and its labels" @click="emit('clear-images')">Remove all</button>
+        <button class="model-button model-button--danger" type="button" :disabled="busy || !images.length" title="Remove every image and its labels" @click="emit('clear-images')">Remove all</button>
         <button class="model-button busy-button" type="button" :disabled="busy || !canDownload || downloadingAll"
 :title="canDownload ? 'Download this image and its mask'
             : needsTraining ? 'Labels changed: train & predict again' : 'Train & predict first'"
@@ -206,14 +198,20 @@ const handleDragLeave = (event) => {
           title="Keyboard shortcuts">?</button>
       </div>
       <div id="shortcut-help" class="shortcut-help" popover>
+        <div class="shortcut-help__header">
+          <h2>Shortcuts</h2>
+          <button class="shortcut-help__close" type="button" popovertarget="shortcut-help" popovertargetaction="hide"
+            aria-label="Close shortcuts" title="Close (Esc)">×</button>
+        </div>
         <ul class="shortcut-list" aria-label="Keyboard shortcuts">
+          <li><kbd>?</kbd><span>Show shortcuts</span></li>
           <li><kbd>Drag</kbd><span>Paint</span></li>
           <li><kbd>↑ / ↓</kbd><span>Previous / next image</span></li>
           <li><kbd>Ctrl + wheel</kbd><span>Zoom</span></li>
           <li><kbd>+ / −</kbd><span>Prediction opacity</span></li>
           <li><kbd>{{ mod }} + Z</kbd><span>Undo</span></li>
           <li><kbd>{{ mod }} + Shift + Z</kbd><span>Redo</span></li>
-          <li><kbd>Middle drag</kbd><span>Pan</span></li>
+          <li><kbd>Wheel / middle drag</kbd><span>Pan when zoomed</span></li>
         </ul>
       </div>
     </div>

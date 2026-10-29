@@ -43,6 +43,8 @@ const resize = event => {
   emit('resize', widthDraft.value === '' ? null : widthDraft.value)
 }
 const percent = value => Math.round(value * 100) + '%'
+// How much of a slider's track is filled, for the track's --fill.
+const fill = (value, range) => ({ '--fill': (value - range.min) / (range.max - range.min) * 100 + '%' })
 const NO_PREDICTION = 'Train & predict first'
 const views = [
   { name: 'Edits', key: VIEW_KEYS.edits, visible: 'editsVisible', opacity: 'editsOpacity', event: 'edits' },
@@ -79,14 +81,14 @@ const viewDisabled = view => view.name === 'Prediction' && !props.hasPrediction
         <label class="slider-row" :title="'Hold ' + VIEW_KEYS.brush + ' and scroll'">
           <span><kbd class="key-hint">{{ VIEW_KEYS.brush }}</kbd>Brush</span>
           <input type="range" :min="BRUSH_SIZE.min" :max="BRUSH_SIZE.max" :step="BRUSH_SIZE.step" :value="brushSize"
-            :aria-valuetext="brushSize + ' px'" @input="emit('update:brush-size', Number($event.target.value))"
+            :style="fill(brushSize, BRUSH_SIZE)" :aria-valuetext="brushSize + ' px'" @input="emit('update:brush-size', Number($event.target.value))"
             @pointerup="$event.currentTarget.blur()" @pointercancel="$event.currentTarget.blur()" />
           <output>{{ brushSize }} px</output>
         </label>
         <label class="slider-row" :title="'Hold ' + VIEW_KEYS.zoom + ' or Ctrl and scroll'">
           <span><kbd class="key-hint">{{ VIEW_KEYS.zoom }}</kbd>Zoom</span>
           <input type="range" :min="ZOOM.min" :max="ZOOM.max" :step="ZOOM.step" :value="zoom"
-            :aria-valuetext="percent(zoom)" @input="emit('update:zoom', Number($event.target.value))"
+            :style="fill(zoom, ZOOM)" :aria-valuetext="percent(zoom)" @input="emit('update:zoom', Number($event.target.value))"
             @pointerup="$event.currentTarget.blur()" @pointercancel="$event.currentTarget.blur()" />
           <output>{{ percent(zoom) }}</output>
         </label>
@@ -134,7 +136,8 @@ const viewDisabled = view => view.name === 'Prediction' && !props.hasPrediction
             <kbd class="key-hint">{{ view.key }}</kbd>{{ view.name }}
           </label>
           <input type="range" :min="OPACITY.min" :max="OPACITY.max" :step="OPACITY.step" :value="props[view.opacity]"
-            :disabled="viewDisabled(view)" :aria-label="view.name + ' opacity'" :aria-valuetext="percent(props[view.opacity])"
+            :disabled="viewDisabled(view)" :style="fill(props[view.opacity], OPACITY)"
+            :aria-label="view.name + ' opacity'" :aria-valuetext="percent(props[view.opacity])"
             @input="emit('update:' + view.event + '-opacity', Number($event.target.value))"
             @pointerup="$event.currentTarget.blur()" @pointercancel="$event.currentTarget.blur()" />
           <output>{{ percent(props[view.opacity]) }}</output>

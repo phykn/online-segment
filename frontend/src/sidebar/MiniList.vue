@@ -14,6 +14,7 @@ defineProps({
     type: Set,
     required: true,
   },
+  selectBusy: { type: Boolean, default: false },
   busy: {
     type: Boolean,
     required: true,
@@ -33,7 +34,7 @@ const emit = defineEmits(['select'])
           'sidebar-mini-list__button--labeled': labeledImages.has(image),
         }"
         type="button"
-        :disabled="busy"
+        :disabled="selectBusy"
         :aria-label="`Select image ${index + 1}: ${image.name}`"
         :aria-pressed="index === selectedIndex"
         :title="image.name"

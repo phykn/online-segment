@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import { VIEW, ZOOM } from '../../config.js'
+import { IMAGE_FILE_ACCEPT } from '../images/files.js'
 import { useCanvasInput } from './input'
 import { labelsWhere, usePainter } from './painter'
 import ClassRatio from './ClassRatio.vue'
@@ -62,6 +63,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
+  'add-files',
   'crop-selection',
   'image-size',
   'label-state-change',
@@ -78,6 +80,8 @@ const rootRef = ref(null)
 const stackRef = ref(null)
 const controlsRef = ref(null)
 const canvasHeight = ref(null)
+const emptyInputRef = ref(null)
+const dropping = ref(false)
 const canvasWidth = ref(null)
 // Pixel size of the working canvases; the stack is scaled (up or down) to fill the free area.
 const editorSize = ref(null)
@@ -365,8 +369,17 @@ defineExpose({
   <section ref="rootRef" class="workspace" aria-label="Image workspace"
     :style="canvasHeight ? { '--canvas-max-height': canvasHeight + 'px' } : undefined">
     <div class="workspace__content">
-      <p v-if="!image" class="workspace__empty">Use <strong>Add images</strong> or drop image files on the list to start.</p>
-      <div v-show="image && rendered" class="workspace__editor">
+      <div v-if="!image" class="workspace__empty" :class="{ 'workspace__empty--dragging': dropping }"
+        @dragenter.prevent="dropping = true" @dragover.prevent="dropping = true"
+        @dragleave.prevent="dropping = $event.currentTarget.contains($event.relatedTarget)"
+        @drop.prevent="dropping = false; emit('add-files', $event.dataTransfer.files)">
+        <input ref="emptyInputRef" class="visually-hidden" type="file" multiple tabindex="-1" aria-hidden="true"
+          :accept="IMAGE_FILE_ACCEPT" @change="emit('add-files', $event.target.files); $event.target.value = ''" />
+        <button class="model-button" type="button" @click="emptyInputRef.click()">Add images</button>
+        <span>or drop image files here</span>
+      </div>
+      <div v-show="image && rendered" class="workspace__editor"
+        :style="fitSize ? { '--fit-width': fitSize.width + 'px' } : undefined">
         <div class="canvas-viewport" :aria-busy="predicting">
           <div v-if="predicting" class="canvas-busy" role="status">
             <span class="spinner" aria-hidden="true"></span>Predicting…
