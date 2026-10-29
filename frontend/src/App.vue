@@ -19,7 +19,7 @@ import Sidebar from './sidebar/Sidebar.vue'
 import ToolsSidebar from './sidebar/ToolsSidebar.vue'
 import { readProject, writeProject } from './project/file.js'
 import { saveBlob } from './output/download.js'
-import { hasImageLabels } from './editor/masks.js'
+import { hasImageLabels, labeledClasses } from './editor/masks.js'
 import { cropImage } from './images/crop.js'
 
 const resizeWidth = ref(IMAGE_WIDTH)
@@ -36,7 +36,7 @@ const projectTask = ref('')
 const projectBusy = computed(() => !!projectTask.value)
 const predictionVisible = ref(true)
 const editsVisible = ref(true)
-const predictionOpacity = ref(OPACITY.default)
+const predictionOpacity = ref(OPACITY.prediction)
 const editsOpacity = ref(OPACITY.default)
 const unclearOnly = ref(false)
 const previewUnclear = ref(false)
@@ -97,6 +97,13 @@ const {
 
 watch(predictionVersion, () => { predictionVisible.value = true })
 
+// Save, load and crop failures show under the Save/Load buttons; any later action clears both errors.
+const projectError = ref('')
+const clearErrors = () => {
+  clearError()
+  projectError.value = ''
+}
+
 // The image list shows unlabeled ('predict') or labeled ('trained') images; one is always chosen,
 // and it follows the selected image so the selection stays in view.
 const listFilter = ref('predict')
@@ -105,6 +112,10 @@ watch([selectedImage, labeledImages], ([image]) => {
   if (image) listFilter.value = filterOf(image)
 })
 const hasLabels = computed(() => labeledImages.value.has(selectedImage.value))
+// Bumped whenever a label edit is committed, so the class count below is rescanned.
+const labelRevision = ref(0)
+const canTrain = computed(() => labelRevision.value >= 0
+  && labeledClasses(images.value.filter(image => labeledImages.value.has(image))).size >= 2)
 const needsTraining = computed(() => hasLabels.value && !canDownloadResult.value && !predicting.value)
 const canClearUnclear = computed(() => !!workspaceRef.value?.hasUnclearLabels
   && !busy.value && !projectBusy.value && !cropOpen.value)
@@ -112,14 +123,15 @@ const canClearUnclear = computed(() => !!workspaceRef.value?.hasUnclearLabels
 
 const openCrop = () => {
   if (!selectedImage.value || busy.value || projectBusy.value) return
-  clearError()
+  clearErrors()
   cropSelection.value = null
   cropOpen.value = true
 }
 const applyCrop = async rect => {
-  if (!selectedImage.value || busy.value || projectBusy.value) return
+  if (!selectedImage.value || !rect || busy.value || projectBusy.value) return
+  if (hasLabels.value && !window.confirm('Cropping clears this image\'s labels. Crop anyway?')) return
   projectTask.value = 'crop'
-  clearError()
+  clearErrors()
   try {
     const file = await cropImage(cropSource.value, rect)
     setCrop(file, rect)
@@ -127,7 +139,7 @@ const applyCrop = async rect => {
     clearResult()
     cropOpen.value = false
     projectDirty.value = true
-  } catch (error) { modelError.value = error.message }
+  } catch (error) { projectError.value = error.message }
   finally { projectTask.value = '' }
 }
 const cancelCrop = () => { cropOpen.value = false }
@@ -136,7 +148,7 @@ const restoreCrop = () => {
   resetCrop()
   updateEdits()
   clearResult()
-  clearError()
+  clearErrors()
   projectDirty.value = true
 }
 
@@ -149,7 +161,7 @@ const protectProject = event => {
 const saveProject = async () => {
   if (projectBusy.value || busy.value || !images.value.length) return
   projectTask.value = 'save'
-  clearError()
+  clearErrors()
   try {
     await nextTick()
     const blob = await writeProject(images.value, {
@@ -157,13 +169,13 @@ const saveProject = async () => {
     }, selectedIndex.value, enabled.value)
     saveBlob(blob, projectName.value)
     projectDirty.value = false
-  } catch (error) { modelError.value = error.message }
+  } catch (error) { projectError.value = error.message }
   finally { projectTask.value = '' }
 }
 const openProject = async file => {
   if (!file || projectBusy.value || busy.value) return
   projectTask.value = 'load'
-  clearError()
+  clearErrors()
   try {
     const loaded = await readProject(file)
     if (projectDirty.value && images.value.length && !window.confirm('Replace the current unsaved project?')) return
@@ -179,7 +191,7 @@ const openProject = async file => {
     await nextTick()
     projectDirty.value = false
     if (loaded.enabled) await predict()
-  } catch (error) { modelError.value = error.message }
+  } catch (error) { projectError.value = error.message }
   finally { projectTask.value = '' }
 }
 
@@ -187,10 +199,20 @@ const resizeImage = width => {
   if (busy.value || projectBusy.value || cropOpen.value || width === displayedWidth.value) return
   resizeWidth.value = width
   model.invalidateFeatures()
-  clearError()
+  clearErrors()
+}
+
+const handleCropKey = event => {
+  if (event.key === 'Escape') cancelCrop()
+  else if (event.key === 'Enter' && (!isInteractiveTarget(event.target) || event.target.closest?.('.crop-overlay'))) {
+    void applyCrop(cropSelection.value)
+  }
+  else return
+  event.preventDefault()
 }
 
 const handleShortcut = (event) => {
+  if (cropOpen.value && !projectBusy.value) return handleCropKey(event)
   if (projectBusy.value || cropOpen.value) return
   if (event.isComposing || isInteractiveTarget(event.target)) return
   if (isRedoShortcut(event)) {
@@ -237,7 +259,8 @@ const handleShortcut = (event) => {
 }
 
 const train = () => {
-  if (projectBusy.value || cropOpen.value) return
+  if (projectBusy.value || cropOpen.value || !canTrain.value) return
+  projectError.value = ''
   void apply()
 }
 
@@ -281,30 +304,33 @@ const resetLabels = () => {
   if (!image || downloading.value || downloadingAll.value) return
 
   workspaceRef.value?.resetLabels()
-  clearError()
+  clearErrors()
 }
 
 const clearUnclear = () => {
   if (!canClearUnclear.value) return
   workspaceRef.value?.clearUnclear()
-  clearError()
+  clearErrors()
 }
 
 const removeAt = (index) => {
   const image = images.value[index]
   if (!image) return
+  if (labeledImages.value.has(image) && !window.confirm(`Remove ${image.name} and its labels?`)) return
 
   removeImage(index)
-  clearError()
+  clearErrors()
   void updateEdits()
 }
 
 const clearAllImages = () => {
   if (busy.value || images.value.length === 0) return
+  const count = images.value.length
+  if (!window.confirm(`Remove all ${count} image${count === 1 ? '' : 's'} and their labels?`)) return
 
   clearImages()
   resetModel()
-  clearError()
+  clearErrors()
 }
 
 const selectAt = (index) => {
@@ -312,7 +338,7 @@ const selectAt = (index) => {
   if (!image || image === selectedImage.value) return
 
   selectImage(index)
-  clearError()
+  clearErrors()
   if (enabled.value) {
     void predict(image)
   } else {
@@ -329,9 +355,12 @@ const stepImage = (step) => {
 
 const handleLabelState = (state) => {
   updateLabelState(state)
-  if (state.changed) clearError()
+  if (state.changed) clearErrors()
   if (state.changed) projectDirty.value = true
-  if (state.changed && state.committed) updateEdits()
+  if (state.changed && state.committed) {
+    labelRevision.value += 1
+    updateEdits()
+  }
 }
 </script>
 
@@ -347,7 +376,8 @@ const handleLabelState = (state) => {
       :downloading-all="downloadingAll"
       :download-progress="exportProgress"
       :can-download="canDownloadResult"
-      :can-download-all="canDownloadAll"
+      :needs-training="needsTraining"
+      :can-download-all="canDownloadAll && canTrain"
       @download="downloadResult"
       @download-all="downloadAll"
       @add-images="addImages"
@@ -416,7 +446,9 @@ const handleLabelState = (state) => {
       :project-task="projectTask"
       :predicting="predicting"
       :needs-training="needsTraining"
+      :can-train="canTrain"
       :model-error="modelError"
+      :project-error="projectError"
       @resize="resizeImage"
       @train="train"
       @save-project="saveProject"

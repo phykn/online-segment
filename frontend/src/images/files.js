@@ -23,15 +23,19 @@ export const filterNewImages = (fileList, existingFiles) => {
     IMAGE_EXTENSIONS.has(getExtension(file)),
   )
   const seenFiles = new Set(existingFiles.map(getFileKey))
+  const duplicateFiles = []
   const uniqueFiles = acceptedFiles.filter((file) => {
     const key = getFileKey(file)
-    if (seenFiles.has(key)) return false
+    if (seenFiles.has(key)) {
+      duplicateFiles.push(file)
+      return false
+    }
 
     seenFiles.add(key)
     return true
   })
 
-  return { uniqueFiles }
+  return { uniqueFiles, duplicateFiles }
 }
 
 export const formatFileSize = (bytes) => {

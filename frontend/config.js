@@ -10,6 +10,8 @@ export const OPACITY = Object.freeze({
   max: 1,
   step: 0.05,
   default: 1,
+  // Predictions start half transparent so the image and painted labels show through.
+  prediction: 0.5,
 })
 
 export const ZOOM = Object.freeze({
@@ -32,6 +34,8 @@ export const VIEW_KEYS = Object.freeze({
   unclear: 'U',
 })
 
+// Below this window width (but above the stacked phone layout) both sidebars start collapsed.
+export const SIDEBAR_COLLAPSE_WIDTH = 960
 export const IMAGE_WIDTH = 768
 
 export const LABEL_ALPHA = 230

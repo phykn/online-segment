@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 
 import { BRUSH_SIZE, OPACITY, VIEW_KEYS, ZOOM } from '../../config.js'
+import { startsCollapsed } from './collapse.js'
 
 const props = defineProps({
   images: { type: Array, required: true },
@@ -16,7 +17,9 @@ const props = defineProps({
   projectTask: { type: String, default: '' },
   predicting: { type: Boolean, default: false },
   needsTraining: { type: Boolean, default: false },
+  canTrain: { type: Boolean, default: false },
   modelError: { type: String, default: '' },
+  projectError: { type: String, default: '' },
   brushSize: { type: Number, required: true },
   zoom: { type: Number, required: true },
   predictionVisible: { type: Boolean, required: true },
@@ -30,7 +33,7 @@ const emit = defineEmits([
   'update:brush-size', 'update:zoom', 'update:prediction-visible', 'update:edits-visible',
   'update:prediction-opacity', 'update:edits-opacity', 'update:unclear-only',
 ])
-const collapsed = ref(false)
+const collapsed = ref(startsCollapsed())
 const projectInput = ref(null)
 const widthDraft = ref(props.width)
 watch(() => props.width, value => { widthDraft.value = value })
@@ -69,6 +72,7 @@ const viewDisabled = view => view.name === 'Prediction' && !props.hasPrediction
           Load<span v-if="projectTask === 'load'" class="spinner" aria-hidden="true"></span>
         </button>
       </div>
+      <p v-if="projectError" class="model-error tools-error" role="alert">{{ projectError }}</p>
 
       <section class="tool-group" aria-labelledby="canvas-group">
         <h2 id="canvas-group">Canvas</h2>
@@ -105,14 +109,16 @@ const viewDisabled = view => view.name === 'Prediction' && !props.hasPrediction
         </div>
         <label class="field-row"><span>Width</span>
           <input v-model.number="widthDraft" type="number" min="1" step="1" placeholder="Original"
-            :disabled="busy || cropping" title="Working image width" @change="resize" /><span class="unit">px</span>
+            :disabled="busy || cropping" title="Working width for every image; press Enter to apply"
+            @keydown.enter.prevent="$event.target.blur()" @change="resize" /><span class="unit">px</span>
         </label>
       </section>
 
       <section class="tool-group" aria-labelledby="model-group">
         <h2 id="model-group">Model</h2>
         <button class="model-button busy-button train-button" :class="{ 'train-button--due': needsTraining }" type="button"
-          :disabled="busy || cropping || !hasImage" @click="emit('train')">
+          :disabled="busy || cropping || !hasImage || !canTrain"
+          :title="canTrain ? undefined : 'Paint at least two classes first'" @click="emit('train')">
           <kbd>Space</kbd>Train &amp; predict<span v-if="predicting" class="spinner" aria-hidden="true"></span>
         </button>
         <p v-if="modelError" class="model-error" role="alert">{{ modelError }}</p>
@@ -137,7 +143,8 @@ const viewDisabled = view => view.name === 'Prediction' && !props.hasPrediction
 
       <section class="tool-group" aria-labelledby="reach-group">
         <h2 id="reach-group">Brush reaches</h2>
-        <label class="switch" :title="hasUnclear ? 'Paint only inside unclear prediction areas' : NO_PREDICTION">
+        <label class="switch"
+          :title="hasUnclear ? 'Brush paints only the unclear areas; clear areas are shaded' : NO_PREDICTION">
           <input type="checkbox" :checked="unclearOnly && hasUnclear" :disabled="!hasUnclear"
             @change="emit('update:unclear-only', $event.target.checked)" />
           <span class="switch__track" aria-hidden="true"><span></span></span>

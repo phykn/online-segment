@@ -22,7 +22,8 @@ const requestDownloadAll = () => {
     type="button"
     :disabled="!downloadingAll && (!canDownloadAll || busy)"
     :aria-label="downloadingAll ? 'Cancel download' : 'Download all images and masks'"
-    :title="downloadingAll ? 'Cancel download' : 'Download all images and masks'"
+    :title="downloadingAll ? 'Cancel download'
+      : canDownloadAll ? 'Download all images and masks' : 'Paint at least two classes first'"
     @click="requestDownloadAll"
   >
     <span
@@ -31,7 +32,7 @@ const requestDownloadAll = () => {
       :style="{ width: downloadProgress + '%' }"
       aria-hidden="true"
     ></span>
-    <span class="model-button__text">Download All</span>
+    <span class="model-button__text">{{ downloadingAll ? 'Cancel download' : 'Download All' }}</span>
     <span v-if="downloadingAll" class="spinner" aria-hidden="true"></span>
   </button>
   <label class="archive-name">

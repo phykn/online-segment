@@ -534,6 +534,18 @@ button {
   cursor: default;
   color: var(--muted);
   background: var(--surface-soft);
+  opacity: 0.55;
+}
+
+.workspace__empty {
+  margin: auto;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+}
+
+.tools-error {
+  margin: 0 2px 4px;
 }
 
 .model-error {
@@ -875,7 +887,7 @@ button {
 .slider-row,
 .view-row {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr) 44px;
+  grid-template-columns: 132px minmax(0, 1fr) 44px;
   align-items: center;
   gap: 8px;
   min-height: 32px;

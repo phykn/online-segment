@@ -40,6 +40,16 @@ const decodeTiff = async (file) => {
   return canvas
 }
 
+export const canDecodeImage = async (file) => {
+  try {
+    const decoded = await decodeImage(file)
+    decoded.dispose()
+    return true
+  } catch {
+    return false
+  }
+}
+
 export const decodeImage = async (file) => {
   if (isTiff(file)) {
     const source = await decodeTiff(file)

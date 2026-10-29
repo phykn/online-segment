@@ -53,8 +53,10 @@ const finish = event => {
 }
 const key = (event, handle) => {
   const offsets = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }
+  // Other keys (Esc, Enter) bubble up to cancel or apply the crop.
   if (!offsets[event.key] || props.busy) return
   event.preventDefault()
+  event.stopPropagation()
   const [dx, dy] = offsets[event.key], step = event.shiftKey ? 10 : 1
   rect.value = adjustCrop(rect.value, handle, dx * step, dy * step, props.width, props.height)
   emit('change', { ...rect.value })
@@ -65,11 +67,11 @@ const key = (event, handle) => {
   <div ref="overlay" class="crop-overlay" @pointerdown.stop @pointermove.stop="move"
     @pointerup.stop="finish" @pointercancel.stop="gesture = null" @wheel.stop.prevent>
     <div class="crop-box" :style="style" tabindex="0" role="group" aria-label="Move crop area"
-      @pointerdown.stop="start($event, 'move')" @keydown.stop="key($event, 'move')">
+      @pointerdown.stop="start($event, 'move')" @keydown="key($event, 'move')">
       <span class="crop-size">{{ rect.width }} × {{ rect.height }} px</span>
       <button v-for="[handle, label] in handles" :key="handle" type="button" :disabled="busy"
         class="crop-handle" :class="'crop-handle--' + handle" :aria-label="'Resize crop ' + label"
-        @pointerdown.stop="start($event, handle)" @keydown.stop="key($event, handle)"></button>
+        @pointerdown.stop="start($event, handle)" @keydown="key($event, handle)"></button>
     </div>
   </div>
 </template>

@@ -1,7 +1,9 @@
 <script setup>
 import { computed, ref } from 'vue'
 
+import { canDecodeImage } from '../images/decode'
 import { filterNewImages, IMAGE_FILE_ACCEPT } from '../images/files'
+import { startsCollapsed } from './collapse.js'
 import ImageList from './ImageList.vue'
 import MiniList from './MiniList.vue'
 import BatchExport from './BatchExport.vue'
@@ -10,6 +12,7 @@ const props = defineProps({
   filter: { type: String, required: true },
   downloading: { type: Boolean, required: true },
   canDownload: { type: Boolean, required: true },
+  needsTraining: { type: Boolean, default: false },
   downloadingAll: { type: Boolean, required: true },
   downloadProgress: { type: Number, required: true },
   canDownloadAll: { type: Boolean, required: true },
@@ -43,7 +46,9 @@ const emit = defineEmits([
 
 const fileInput = ref(null)
 const isDragging = ref(false)
-const collapsed = ref(false)
+const collapsed = ref(startsCollapsed())
+// Mac shows ⌘ for the undo and redo modifier; Ctrl + wheel stays Ctrl because pinches send it.
+const mod = /Mac|iP(hone|ad)/.test(navigator.platform) ? '⌘' : 'Ctrl'
 const version = __APP_VERSION__
 const trainedCount = computed(() => props.images.filter(image => props.labeledImages.has(image)).length)
 const filters = computed(() => [
@@ -54,13 +59,19 @@ const openFilePicker = () => {
   fileInput.value?.click()
 }
 
-const addFiles = (fileList) => {
+// Files that cannot be decoded or are already listed are left out, and the user is told which.
+const addFiles = async (fileList) => {
   if (props.busy) return
-  const { uniqueFiles } = filterNewImages(fileList, props.images)
+  const { uniqueFiles, duplicateFiles } = filterNewImages(fileList, props.images)
+  const readable = await Promise.all(uniqueFiles.map(canDecodeImage))
+  const validFiles = uniqueFiles.filter((_, index) => readable[index])
+  const skipped = [
+    ...uniqueFiles.filter((_, index) => !readable[index]).map(file => file.name + ' (not a readable image)'),
+    ...duplicateFiles.map(file => file.name + ' (already added)'),
+  ]
 
-  if (uniqueFiles.length) {
-    emit('add-images', uniqueFiles)
-  }
+  if (validFiles.length) emit('add-images', validFiles)
+  if (skipped.length) window.alert('Skipped:\n' + skipped.join('\n'))
 }
 
 const handleFileSelect = (event) => {
@@ -179,9 +190,11 @@ const handleDragLeave = (event) => {
     </template>
     <div v-show="!collapsed" class="sidebar__batch-controls">
       <div class="button-pair">
-        <button class="model-button" type="button" :disabled="busy || !images.length" @click="emit('clear-images')">Clear</button>
+        <button class="model-button" type="button" :disabled="busy || !images.length" title="Remove every image and its labels" @click="emit('clear-images')">Remove all</button>
         <button class="model-button busy-button" type="button" :disabled="busy || !canDownload || downloadingAll"
-          title="Download this image and its mask" @click="emit('download')">
+:title="canDownload ? 'Download this image and its mask'
+            : needsTraining ? 'Labels changed: train & predict again' : 'Train & predict first'"
+          @click="emit('download')">
           Download<span v-if="downloading" class="spinner" aria-hidden="true"></span>
         </button>
       </div>
@@ -198,8 +211,8 @@ const handleDragLeave = (event) => {
           <li><kbd>↑ / ↓</kbd><span>Previous / next image</span></li>
           <li><kbd>Ctrl + wheel</kbd><span>Zoom</span></li>
           <li><kbd>+ / −</kbd><span>Prediction opacity</span></li>
-          <li><kbd>Ctrl + Z</kbd><span>Undo</span></li>
-          <li><kbd>Ctrl + Shift + Z</kbd><span>Redo</span></li>
+          <li><kbd>{{ mod }} + Z</kbd><span>Undo</span></li>
+          <li><kbd>{{ mod }} + Shift + Z</kbd><span>Redo</span></li>
           <li><kbd>Middle drag</kbd><span>Pan</span></li>
         </ul>
       </div>

@@ -79,6 +79,16 @@ export const markLabelMaskChanged = (image) => {
   )
 }
 
+export const labeledClasses = (images) => {
+  const classes = new Set()
+  for (const image of images) {
+    for (const label of getLabelMask(image)?.data ?? []) {
+      if (label !== ERASER_LABEL) classes.add(label)
+    }
+  }
+  return classes
+}
+
 export const hasImageLabels = (image) =>
   (getLabelMask(image)?.labeledCount ?? 0) > 0
 

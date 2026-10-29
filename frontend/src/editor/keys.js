@@ -37,10 +37,10 @@ export const isUndoShortcut = (event) =>
   (event.ctrlKey || event.metaKey) &&
   !event.shiftKey
 
+// Ctrl + Y is the Windows redo.
 export const isRedoShortcut = (event) =>
-  event.code === 'KeyZ' &&
-  (event.ctrlKey || event.metaKey) &&
-  event.shiftKey
+  (event.code === 'KeyZ' && (event.ctrlKey || event.metaKey) && event.shiftKey) ||
+  (event.code === 'KeyY' && !!event.ctrlKey && !event.shiftKey)
 
 export const setWheelKey = (code, pressed) => {
   if (code !== 'Key' + VIEW_KEYS.brush && code !== 'Key' + VIEW_KEYS.zoom) return false

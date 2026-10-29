@@ -353,6 +353,7 @@ defineExpose({
   <section ref="rootRef" class="workspace" aria-label="Image workspace"
     :style="canvasHeight ? { '--canvas-max-height': canvasHeight + 'px' } : undefined">
     <div class="workspace__content">
+      <p v-if="!image" class="workspace__empty">Use <strong>Add images</strong> or drop image files on the list to start.</p>
       <div v-show="image && rendered" class="workspace__editor">
         <div class="canvas-viewport" :aria-busy="predicting">
           <div v-if="predicting" class="canvas-busy" role="status">
