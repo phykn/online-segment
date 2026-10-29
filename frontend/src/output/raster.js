@@ -1,4 +1,4 @@
-import { LABELS } from '../../config.js'
+import { LABELS, VIEW } from '../../config.js'
 
 const isLittleEndian =
   new Uint8Array(new Uint32Array([0x01020304]).buffer)[0] === 0x04
@@ -11,7 +11,7 @@ const packRgba = ([red, green, blue, alpha]) =>
 const labelPalette = Uint32Array.from(
   LABELS.map((label) => packRgba([...label.rgba.slice(0, 3), 255])),
 )
-const uncertaintyColor = packRgba([255, 255, 0, 255])
+const shadeColor = packRgba([0, 0, 0, VIEW.unclearShade])
 
 const fillRuns = (mask, rgba, colorForValue) => {
   const pixels = new Uint32Array(
@@ -38,6 +38,7 @@ export const rasterizeLabels = (
     (label) => labelPalette[label] ?? 0,
   )
 
+// Shades the pixels outside the unclear area, which the brush cannot reach there.
 export const rasterizeUncertainty = (
   mask,
   target = new Uint8ClampedArray(mask.width * mask.height * 4),
@@ -45,7 +46,7 @@ export const rasterizeUncertainty = (
   fillRuns(
     mask,
     target,
-    (uncertain) => (uncertain ? uncertaintyColor : 0),
+    (uncertain) => (uncertain ? 0 : shadeColor),
   )
 
 const imageUrl = (mask, rasterize) => {

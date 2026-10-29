@@ -21,40 +21,46 @@ export const ZOOM = Object.freeze({
 
 export const ERASER_LABEL = -1
 
+export const ERASER_KEY = 'T'
+
+export const IMAGE_WIDTH = 768
+
+export const LABEL_ALPHA = 230
+
+// Darker brush outline so the cursor stays visible over its own color.
+const CURSOR_SHADE = 0.75
+
+const hexRgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16))
+const shade = hex => '#' + hexRgb(hex)
+  .map(channel => Math.round(channel * CURSOR_SHADE).toString(16).padStart(2, '0')).join('')
+
 export const LABELS = [
-  {
-    value: 0,
-    name: 'Class Q',
-    key: 'Q',
-    color: '#ef476f',
-    cursorColor: '#b90f3b',
-    rgba: [239, 71, 111, 230],
-  },
-  {
-    value: 1,
-    name: 'Class W',
-    key: 'W',
-    color: '#118ab2',
-    cursorColor: '#006b91',
-    rgba: [17, 138, 178, 230],
-  },
-  {
-    value: 2,
-    name: 'Class E',
-    key: 'E',
-    color: '#06a77d',
-    cursorColor: '#007a5e',
-    rgba: [6, 167, 125, 230],
-  },
-  {
-    value: 3,
-    name: 'Class R',
-    key: 'R',
-    color: '#8e5de7',
-    cursorColor: '#6936c4',
-    rgba: [142, 93, 231, 230],
-  },
-]
+  ['1', 'Navy', '#1f3a93'],
+  ['2', 'Yellow', '#f5c400'],
+  ['3', 'Sky', '#4fc3f7'],
+  ['4', 'Red', '#e53935'],
+  ['5', 'Orange', '#fb8c00'],
+  ['6', 'Green', '#2e9d4a'],
+  ['7', 'Purple', '#8e44ad'],
+  ['8', 'Brown', '#8d5a2b'],
+  ['9', 'Lime', '#9ccc3c'],
+  ['0', 'Teal', '#00897b'],
+].map(([key, name, color], value) => Object.freeze({
+  value,
+  name,
+  key,
+  color,
+  cursorColor: shade(color),
+  rgba: [...hexRgb(color), LABEL_ALPHA],
+}))
+
+export const VIEW = Object.freeze({
+  // Alpha of the shade over pixels the brush cannot reach while Unclear is on.
+  unclearShade: 150,
+  // Labels that "Clear unclear labels" would remove, shown while hovering it.
+  clearPreview: [255, 255, 255, 235],
+  ratioDigits: 1,
+})
 
 export const EXPORT = Object.freeze({
   batchFiles: 16,

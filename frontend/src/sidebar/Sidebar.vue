@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { filterNewImages, IMAGE_FILE_ACCEPT } from '../images/files'
 import ImageList from './ImageList.vue'
@@ -7,6 +7,8 @@ import MiniList from './MiniList.vue'
 import BatchExport from './BatchExport.vue'
 
 const props = defineProps({
+  downloading: { type: Boolean, required: true },
+  canDownload: { type: Boolean, required: true },
   downloadingAll: { type: Boolean, required: true },
   downloadProgress: { type: Number, required: true },
   canDownloadAll: { type: Boolean, required: true },
@@ -29,6 +31,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
+  'download',
   'download-all',
   'add-images',
   'clear-images',
@@ -39,6 +42,14 @@ const emit = defineEmits([
 const fileInput = ref(null)
 const isDragging = ref(false)
 const collapsed = ref(false)
+const version = __APP_VERSION__
+// '' lists every image; 'predict' only unlabeled ones, 'trained' only labeled ones.
+const filter = ref('')
+const trainedCount = computed(() => props.images.filter(image => props.labeledImages.has(image)).length)
+const filters = computed(() => [
+  { value: 'predict', name: 'Predict', count: props.images.length - trainedCount.value },
+  { value: 'trained', name: 'Trained', count: trainedCount.value },
+])
 const openFilePicker = () => {
   fileInput.value?.click()
 }
@@ -147,8 +158,16 @@ const handleDragLeave = (event) => {
     </button>
     </div>
 
+    <div class="list-filters" role="group" aria-label="Filter images">
+      <button v-for="item in filters" :key="item.value" class="list-filter" type="button"
+        :aria-pressed="filter === item.value" @click="filter = filter === item.value ? '' : item.value">
+        {{ item.name }}<span class="list-filter__count">{{ item.count }}</span>
+      </button>
+    </div>
+
     <ImageList
       :images="images"
+      :filter="filter"
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
       :busy="props.busy"
@@ -159,9 +178,36 @@ const handleDragLeave = (event) => {
 
     </template>
     <div v-show="!collapsed" class="sidebar__batch-controls">
+      <div class="button-pair">
+        <button class="model-button" type="button" :disabled="busy || !images.length" @click="emit('clear-images')">Clear</button>
+        <button class="model-button busy-button" type="button" :disabled="busy || !canDownload || downloadingAll"
+          title="Download this image and its mask" @click="emit('download')">
+          Download<span v-if="downloading" class="spinner" aria-hidden="true"></span>
+        </button>
+      </div>
       <BatchExport :busy="busy" :downloading-all="downloadingAll" :download-progress="downloadProgress"
         :can-download-all="canDownloadAll" @download-all="emit('download-all', $event)" />
-      <button v-if="images.length" class="model-button" type="button" :disabled="busy" @click="emit('clear-images')">Clear images</button>
+      <div class="sidebar__footer">
+        <span>v{{ version }}</span>
+        <button class="help-button" type="button" popovertarget="shortcut-help" aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts">?</button>
+      </div>
+      <div id="shortcut-help" class="shortcut-help" popover>
+        <ul class="shortcut-list" aria-label="Keyboard shortcuts">
+          <li><kbd>1 – 9, 0</kbd><span>Label</span></li>
+          <li><kbd>T</kbd><span>Erase</span></li>
+          <li><kbd>Click</kbd><span>Select region</span></li>
+          <li><kbd>Drag</kbd><span>Paint</span></li>
+          <li><kbd>Shift + drag</kbd><span>Paint anywhere</span></li>
+          <li><kbd>Space</kbd><span>Train &amp; predict</span></li>
+          <li><kbd>B + wheel</kbd><span>Brush size</span></li>
+          <li><kbd>Z + wheel</kbd><span>Zoom</span></li>
+          <li><kbd>+ / −</kbd><span>Prediction opacity</span></li>
+          <li><kbd>Ctrl + Z</kbd><span>Undo</span></li>
+          <li><kbd>Ctrl + Shift + Z</kbd><span>Redo</span></li>
+          <li><kbd>Middle drag</kbd><span>Pan</span></li>
+        </ul>
+      </div>
     </div>
   </aside>
 </template>

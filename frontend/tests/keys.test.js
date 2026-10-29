@@ -12,26 +12,19 @@ import {
 } from '../src/editor/keys.js'
 
 test('maps label, eraser, and apply shortcuts', () => {
-  assert.deepEqual(keyAction('KeyQ'), { name: 'label', value: 0 })
-  assert.deepEqual(keyAction('KeyW'), { name: 'label', value: 1 })
-  assert.deepEqual(keyAction('KeyE'), { name: 'label', value: 2 })
-  assert.deepEqual(keyAction('KeyR'), { name: 'label', value: 3 })
+  for (const [digit, value] of [['1', 0], ['2', 1], ['5', 4], ['9', 8], ['0', 9]]) {
+    assert.deepEqual(keyAction('Digit' + digit, digit), { name: 'label', value })
+    assert.deepEqual(keyAction('Numpad' + digit, digit), { name: 'label', value })
+  }
   assert.deepEqual(keyAction('KeyT'), { name: 'eraser' })
   assert.deepEqual(keyAction('Space'), { name: 'apply' })
-  assert.deepEqual(keyAction('Digit1', '1'), { name: 'toggle-prediction' })
-  assert.deepEqual(keyAction('Digit2', '2'), { name: 'toggle-uncertainty' })
-  assert.deepEqual(keyAction('Digit3', '3'), { name: 'toggle-edits' })
-  assert.deepEqual(keyAction('Numpad1'), { name: 'toggle-prediction' })
-  assert.deepEqual(keyAction('Numpad2'), { name: 'toggle-uncertainty' })
-  assert.deepEqual(keyAction('Numpad3'), { name: 'toggle-edits' })
   assert.deepEqual(keyAction('Equal', '+'), { name: 'opacity-up' })
   assert.deepEqual(keyAction('Minus', '-'), { name: 'opacity-down' })
   assert.deepEqual(keyAction('NumpadAdd', '+'), { name: 'opacity-up' })
   assert.deepEqual(keyAction('NumpadSubtract', '-'), { name: 'opacity-down' })
-  assert.equal(keyAction('Enter'), null)
-  assert.equal(keyAction('NumpadEnter'), null)
-  assert.equal(keyAction('Digit0', '0'), null)
-  assert.equal(keyAction('Delete'), null)
+  for (const code of ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'Enter', 'NumpadEnter', 'Delete']) {
+    assert.equal(keyAction(code), null)
+  }
 })
 
 test('ignores shortcuts for every interactive target', () => {

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import { BRUSH_SIZE, ERASER_LABEL, ZOOM } from '../config.js'
+import { BRUSH_SIZE, ERASER_LABEL, IMAGE_WIDTH, OPACITY, ZOOM } from '../config.js'
 import {
   clearWheelKeys,
   isInteractiveTarget,
@@ -23,7 +23,7 @@ import { saveBlob } from './output/download.js'
 import { hasImageLabels } from './editor/masks.js'
 import { cropImage } from './images/crop.js'
 
-const resizeWidth = ref(768)
+const resizeWidth = ref(IMAGE_WIDTH)
 const originalWidth = ref(null)
 const displayedWidth = computed(() => resizeWidth.value == null ? null
   : Math.min(resizeWidth.value, originalWidth.value ?? resizeWidth.value))
@@ -33,7 +33,15 @@ const brushSize = ref(BRUSH_SIZE.default)
 const zoom = ref(ZOOM.default)
 const workspaceRef = ref(null)
 const sessionId = ref('')
-const projectBusy = ref(false)
+// Which project action is running: 'save', 'load' or 'crop'.
+const projectTask = ref('')
+const projectBusy = computed(() => !!projectTask.value)
+const predictionVisible = ref(true)
+const editsVisible = ref(true)
+const predictionOpacity = ref(OPACITY.default)
+const editsOpacity = ref(OPACITY.default)
+const unclearOnly = ref(false)
+const previewUnclear = ref(false)
 const cropOpen = ref(false)
 const cropSelection = ref(null)
 const projectDirty = ref(false)
@@ -68,17 +76,18 @@ const model = useModel({
 const {
   downloading,
   downloadingAll,
-  downloadProgress,
   enabled,
   updateEdits,
   error: modelError,
   resultImage,
+  resultMask,
   uncertaintyImage,
   uncertaintyMask,
   predictionVersion,
   predicting,
   canDownloadResult,
   canDownloadAll,
+  downloadProgress: exportProgress,
   busy,
   clearError,
   clearResult,
@@ -88,6 +97,12 @@ const {
   downloadAll,
   downloadResult,
 } = model
+
+watch(predictionVersion, () => { predictionVisible.value = true })
+const hasLabels = computed(() => labeledImages.value.has(selectedImage.value))
+const needsTraining = computed(() => hasLabels.value && !canDownloadResult.value && !predicting.value)
+const canClearUnclear = computed(() => !!workspaceRef.value?.hasUnclearLabels
+  && !busy.value && !proposing.value && !projectBusy.value && !cropOpen.value)
 
 const proposals = useProposals({ selectedImage, resizeWidth, cellpose, error: modelError })
 const { instances, proposing, propose, reset: resetProposals } = proposals
@@ -100,7 +115,7 @@ const openCrop = () => {
 }
 const applyCrop = async rect => {
   if (!selectedImage.value || busy.value || proposing.value || projectBusy.value) return
-  projectBusy.value = true
+  projectTask.value = 'crop'
   clearError()
   try {
     const file = await cropImage(cropSource.value, rect)
@@ -110,12 +125,11 @@ const applyCrop = async rect => {
     cropOpen.value = false
     projectDirty.value = true
   } catch (error) { modelError.value = error.message }
-  finally { projectBusy.value = false }
+  finally { projectTask.value = '' }
 }
+const cancelCrop = () => { cropOpen.value = false }
 const restoreCrop = () => {
-  if ((!canResetCrop.value && !cropOpen.value) || busy.value || proposing.value || projectBusy.value) return
-  cropOpen.value = false
-  if (!canResetCrop.value) return
+  if (!canResetCrop.value || cropOpen.value || busy.value || proposing.value || projectBusy.value) return
   resetCrop()
   updateEdits()
   clearResult()
@@ -131,7 +145,7 @@ const protectProject = event => {
 }
 const saveProject = async () => {
   if (projectBusy.value || busy.value || proposing.value || !images.value.length) return
-  projectBusy.value = true
+  projectTask.value = 'save'
   clearError()
   try {
     await nextTick()
@@ -141,11 +155,11 @@ const saveProject = async () => {
     saveBlob(blob, projectName.value)
     projectDirty.value = false
   } catch (error) { modelError.value = error.message }
-  finally { projectBusy.value = false }
+  finally { projectTask.value = '' }
 }
 const openProject = async file => {
   if (!file || projectBusy.value || busy.value || proposing.value) return
-  projectBusy.value = true
+  projectTask.value = 'load'
   clearError()
   try {
     const loaded = await readProject(file)
@@ -166,7 +180,7 @@ const openProject = async file => {
     projectDirty.value = false
     if (loaded.enabled) await predict()
   } catch (error) { modelError.value = error.message }
-  finally { projectBusy.value = false }
+  finally { projectTask.value = '' }
 }
 
 const resizeImage = width => {
@@ -222,19 +236,23 @@ const handleShortcut = (event) => {
   } else if (action.name === 'eraser') {
     selectedLabel.value = ERASER_LABEL
   } else if (action.name === 'apply') {
-    if (!event.repeat && !proposing.value) void apply()
-  } else if (action.name === 'toggle-prediction') {
-    if (!event.repeat) workspaceRef.value?.togglePrediction()
-  } else if (action.name === 'toggle-uncertainty') {
-    if (!event.repeat) workspaceRef.value?.toggleUncertainty()
-  } else if (action.name === 'toggle-edits') {
-    if (!event.repeat) workspaceRef.value?.toggleEdits()
+    if (!event.repeat) train()
   } else if (action.name === 'opacity-up') {
-    workspaceRef.value?.adjustOpacity(0.05)
+    adjustOpacity(OPACITY.step)
   } else if (action.name === 'opacity-down') {
-    workspaceRef.value?.adjustOpacity(-0.05)
+    adjustOpacity(-OPACITY.step)
   }
   event.preventDefault()
+}
+
+const train = () => {
+  if (proposing.value || projectBusy.value || cropOpen.value) return
+  void apply()
+}
+
+const adjustOpacity = (amount) => {
+  const next = Math.round((predictionOpacity.value + amount) * 100) / 100
+  predictionOpacity.value = Math.min(OPACITY.max, Math.max(OPACITY.min, next))
 }
 
 const restoreEditorFocus = (event) => {
@@ -271,7 +289,13 @@ const resetLabels = () => {
   const image = selectedImage.value
   if (!image || downloading.value || downloadingAll.value) return
 
-  workspaceRef.value?.resetLabels(image)
+  workspaceRef.value?.resetLabels()
+  clearError()
+}
+
+const clearUnclear = () => {
+  if (!canClearUnclear.value) return
+  workspaceRef.value?.clearUnclear()
   clearError()
 }
 
@@ -321,9 +345,12 @@ const handleLabelState = (state) => {
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
       :busy="busy || proposing || projectBusy || cropOpen"
+      :downloading="downloading"
       :downloading-all="downloadingAll"
-      :download-progress="downloadProgress"
+      :download-progress="exportProgress"
+      :can-download="canDownloadResult"
       :can-download-all="canDownloadAll"
+      @download="downloadResult"
       @download-all="downloadAll"
       @add-images="addImages"
       @clear-images="clearAllImages"
@@ -333,13 +360,12 @@ const handleLabelState = (state) => {
     <div class="editor-main">
       <Toolbar
         :selected-label="selectedLabel"
-        :brush-size="brushSize"
-        :zoom="zoom"
-        :can-reset="labeledImages.has(selectedImage) && !downloading && !downloadingAll && !projectBusy"
+        :can-reset="hasLabels && !busy && !proposing && !projectBusy && !cropOpen"
+        :can-clear-unclear="canClearUnclear"
         @reset-labels="resetLabels"
+        @clear-unclear="clearUnclear"
+        @preview-unclear="previewUnclear = $event"
         @update:selected-label="selectedLabel = $event"
-        @update:brush-size="brushSize = $event"
-        @update:zoom="zoom = $event"
       />
       <Workspace
         :instances="instances"
@@ -353,38 +379,57 @@ const handleLabelState = (state) => {
         :brush-size="brushSize"
         :zoom="zoom"
         :result-image="resultImage"
+        :result-mask="resultMask"
         :uncertainty-image="uncertaintyImage"
         :uncertainty-mask="uncertaintyMask"
         :prediction-version="predictionVersion"
-        :processing="predicting || proposing || downloading || downloadingAll || projectBusy"
-        :can-download="canDownloadResult"
-        :downloading="downloading"
+        :prediction-visible="predictionVisible"
+        :edits-visible="editsVisible"
+        :prediction-opacity="predictionOpacity"
+        :edits-opacity="editsOpacity"
+        :unclear-only="unclearOnly"
+        :preview-unclear-clear="previewUnclear && canClearUnclear"
         :busy="downloading || downloadingAll || proposing || projectBusy"
-        @download="downloadResult"
         @crop-selection="cropSelection = $event"
         @image-size="originalWidth = $event.width"
         @label-state-change="handleLabelState"
+        @show-edits="editsVisible = true"
         @update:brush-size="brushSize = $event"
         @update:zoom="zoom = $event"
       />
     </div>
     <ToolsSidebar
+      v-model:brush-size="brushSize"
+      v-model:zoom="zoom"
+      v-model:prediction-visible="predictionVisible"
+      v-model:edits-visible="editsVisible"
+      v-model:prediction-opacity="predictionOpacity"
+      v-model:edits-opacity="editsOpacity"
+      v-model:unclear-only="unclearOnly"
       :images="images"
       :width="displayedWidth"
       :parameters="cellpose"
       :has-image="!!selectedImage"
-      :can-reset-crop="canResetCrop || cropOpen"
+      :has-prediction="!!resultImage"
+      :has-unclear="!!uncertaintyMask"
+      :can-reset-crop="canResetCrop"
       :cropping="cropOpen"
       :has-crop-selection="!!cropSelection"
       :busy="busy || proposing || projectBusy"
+      :project-task="projectTask"
+      :proposing="proposing"
+      :predicting="predicting"
+      :needs-training="needsTraining"
       :model-error="modelError"
       @apply="applySettings"
       @resize="resizeImage"
+      @train="train"
       @save-project="saveProject"
       @open-project="openProject"
       @crop="openCrop"
       @reset-crop="restoreCrop"
       @apply-crop="applyCrop(cropSelection)"
+      @cancel-crop="cancelCrop"
     />
   </main>
 </template>

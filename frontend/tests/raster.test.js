@@ -6,11 +6,11 @@ import {
   rasterizeUncertainty,
 } from '../src/output/raster.js'
 
-test('renders every class including Q opaquely and only unlabeled pixels transparently', () => {
-  const target = new Uint8ClampedArray(5 * 4)
+test('renders every class including the first opaquely and only unlabeled pixels transparently', () => {
+  const target = new Uint8ClampedArray(6 * 4)
   const result = rasterizeLabels(
     {
-      width: 5,
+      width: 6,
       height: 1,
       runs: [
         [-1, 1],
@@ -18,6 +18,7 @@ test('renders every class including Q opaquely and only unlabeled pixels transpa
         [1, 1],
         [2, 1],
         [3, 1],
+        [9, 1],
       ],
     },
     target,
@@ -26,14 +27,15 @@ test('renders every class including Q opaquely and only unlabeled pixels transpa
   assert.equal(result, target)
   assert.deepEqual(Array.from(result), [
     0, 0, 0, 0,
-    239, 71, 111, 255,
-    17, 138, 178, 255,
-    6, 167, 125, 255,
-    142, 93, 231, 255,
+    31, 58, 147, 255,
+    245, 196, 0, 255,
+    79, 195, 247, 255,
+    229, 57, 53, 255,
+    0, 137, 123, 255,
   ])
 })
 
-test('rasterizes uncertainty RLE runs into byte-exact yellow RGBA', () => {
+test('shades only the pixels outside the unclear area', () => {
   assert.deepEqual(
     Array.from(
       rasterizeUncertainty({
@@ -46,9 +48,9 @@ test('rasterizes uncertainty RLE runs into byte-exact yellow RGBA', () => {
       }),
     ),
     [
+      0, 0, 0, 150,
       0, 0, 0, 0,
-      255, 255, 0, 255,
-      255, 255, 0, 255,
+      0, 0, 0, 0,
     ],
   )
 })

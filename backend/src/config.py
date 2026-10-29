@@ -28,7 +28,7 @@ class CellposeConfig(BaseModel):
 class ExportConfig(BaseModel):
     max_age: int = Field(gt=0)
     temp_prefix: str
-    colors: list[tuple[ColorChannel, ColorChannel, ColorChannel]] = Field(min_length=4, max_length=4)
+    colors: list[tuple[ColorChannel, ColorChannel, ColorChannel]] = Field(min_length=10, max_length=10)
     png_compress_level: int = Field(default=1, ge=0, le=9)
 
 class FeatureConfig(BaseModel):

@@ -21,7 +21,7 @@ test('clearing labels can be undone and redone without losing earlier brush hist
   painter.beginStroke()
   painter.stamp(canvas, {x:2,y:1}, .4, 2)
   painter.commitStroke()
-  painter.resetForImage(image, null)
+  assert.equal(painter.clearLabels(image), true)
   assert.equal(getLabelMask(image).labeledCount, 0)
   assert.equal(painter.undo(), true)
   assert.equal(getLabelMask(image).data[7], 2)
@@ -30,6 +30,21 @@ test('clearing labels can be undone and redone without losing earlier brush hist
   painter.undo()
   painter.undo()
   assert.equal(getLabelMask(image).labeledCount, 0)
+})
+
+test('clears only labels the filter allows, as one undoable step', () => {
+  const painter = usePainter(), image = {}
+  painter.prepare(image, 4, 1)
+  const canvas = { getContext: () => ({beginPath(){},arc(){},fill(){},save(){},restore(){}}) }
+  painter.beginStroke()
+  painter.stamp(canvas, {x:0,y:0}, .4, 1)
+  painter.stamp(canvas, {x:3,y:0}, .4, 2)
+  painter.commitStroke()
+  assert.equal(painter.clearLabels(image, x => x < 2), true)
+  assert.deepEqual(Array.from(getLabelMask(image).data), [-1, -1, -1, 2])
+  assert.equal(painter.clearLabels(image, x => x < 2), false)
+  painter.undo()
+  assert.deepEqual(Array.from(getLabelMask(image).data), [1, -1, -1, 2])
 })
 
 test('paints one continuous capsule between pointer positions', () => {

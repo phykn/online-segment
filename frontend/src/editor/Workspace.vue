@@ -1,22 +1,30 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-import { LABELS, OPACITY, ZOOM } from '../../config.js'
+import { LABELS, VIEW, ZOOM } from '../../config.js'
 import { useCanvasInput } from './input'
-import { usePainter } from './painter'
-import ResultControls from './ResultControls.vue'
+import { labelsWhere, usePainter } from './painter'
+import ClassRatio from './ClassRatio.vue'
+import { countLabels, countRuns } from './ratios.js'
 import { getEditorSize } from './size'
 import { decodeImage } from '../images/decode'
 import { setOriginalImageSize } from '../images/metadata'
 import { instanceAt, resizeInstances } from '../model/instances.js'
 import { allowsUnclear } from './uncertainty.js'
+import { getLabelMask } from './masks.js'
 import CropOverlay from '../images/CropOverlay.vue'
 
 const props = defineProps({
   cropping: { type: Boolean, default: false },
   cropSource: { type: File, default: null },
   cropBounds: { type: Object, default: null },
-  processing: { type: Boolean, default: false },
+  predictionVisible: { type: Boolean, default: true },
+  editsVisible: { type: Boolean, default: true },
+  predictionOpacity: { type: Number, required: true },
+  editsOpacity: { type: Number, required: true },
+  unclearOnly: { type: Boolean, default: false },
+  previewUnclearClear: { type: Boolean, default: false },
+  resultMask: { type: Object, default: null },
   predictionVersion: { type: Number, default: 0 },
   uncertaintyMask: { type: Object, default: null },
   instances: { type: Object, default: null },
@@ -48,14 +56,6 @@ const props = defineProps({
     type: Number,
     required: true,
   },
-  canDownload: {
-    type: Boolean,
-    default: false,
-  },
-  downloading: {
-    type: Boolean,
-    default: false,
-  },
   busy: {
     type: Boolean,
     default: false,
@@ -65,8 +65,8 @@ const props = defineProps({
 const emit = defineEmits([
   'crop-selection',
   'image-size',
-  'download',
   'label-state-change',
+  'show-edits',
   'update:brush-size',
   'update:zoom',
 ])
@@ -76,6 +76,7 @@ const labelCanvasRef = ref(null)
 const resultLabelOutlineCanvasRef = ref(null)
 const proposalCanvasRef = ref(null)
 const previewCanvasRef = ref(null)
+const clearPreviewCanvasRef = ref(null)
 const hoveredPoint = ref(null)
 const shiftHeld = ref(false)
 const rootRef = ref(null)
@@ -86,12 +87,15 @@ let resizeObserver = null
 const rendered = ref(false)
 const sourceSize = ref(null)
 const errorMessage = ref('')
-const resultOpacity = ref(OPACITY.default)
-const labelsVisible = ref(true)
-const uncertaintyVisible = ref(false)
-const predictionVisible = ref(true)
-const editAllows = computed(() => uncertaintyVisible.value ? allowsUnclear(props.uncertaintyMask) : null)
-watch(() => props.predictionVersion, () => { predictionVisible.value = true })
+const labelRevision = ref(0)
+const unclearActive = computed(() => props.unclearOnly && !!props.uncertaintyMask && !props.cropping)
+const editAllows = computed(() => unclearActive.value ? allowsUnclear(props.uncertaintyMask) : null)
+const classCounts = computed(() => {
+  labelRevision.value
+  if (props.resultMask) return countRuns(props.resultMask)
+  const mask = rendered.value && props.image ? getLabelMask(props.image) : null
+  return mask ? countLabels(mask.data) : null
+})
 
 const labelPainter = usePainter()
 const editorInstances = computed(() => rendered.value
@@ -130,20 +134,20 @@ onBeforeUnmount(() => {
   window.removeEventListener('blur', clearPreview)
 })
 
-const resetLabels = (image) => {
-  if (props.cropping) return
-  labelPainter.resetForImage(image, labelCanvasRef.value)
+const clearLabels = (allows = null) => {
+  const image = props.image
+  if (!image || props.busy || props.cropping || !labelPainter.clearLabels(image, allows)) return
   renderLabels()
-  emit('label-state-change', {
-    image,
-    hasLabels: false,
-    changed: true,
-    committed: true,
-  })
+  emitLabelState(true, true)
+}
+const resetLabels = () => clearLabels()
+const clearUnclear = () => {
+  if (unclearMask.value) clearLabels(allowsUnclear(props.uncertaintyMask))
 }
 
 const emitLabelState = (changed = false, committed = false) => {
   if (!props.image) return
+  labelRevision.value += 1
   emit('label-state-change', {
     image: props.image,
     hasLabels: labelPainter.hasLabels(),
@@ -238,26 +242,9 @@ const changeHistory = (action) => {
 const undoStroke = () => changeHistory(labelPainter.undo)
 const redoStroke = () => changeHistory(labelPainter.redo)
 
-const togglePrediction = () => {
-  if (props.image) predictionVisible.value = !predictionVisible.value
-}
-
-const toggleUncertainty = () => {
-  uncertaintyVisible.value = !uncertaintyVisible.value
-}
-
-const toggleEdits = () => {
-  labelsVisible.value = !labelsVisible.value
-}
-
-const adjustOpacity = (amount) => {
-  const next = Math.round((resultOpacity.value + amount) * 100) / 100
-  resultOpacity.value = Math.min(OPACITY.max, Math.max(OPACITY.min, next))
-}
-
 const beginLabelStroke = () => {
   hoveredPoint.value = null
-  labelsVisible.value = true
+  if (!props.editsVisible) emit('show-edits')
   labelPainter.beginStroke(editAllows.value)
 }
 
@@ -289,7 +276,6 @@ watch(
     const currentRenderId = ++renderId
     rendered.value = false
     emit('crop-selection', null)
-    if (props.cropping) uncertaintyVisible.value = false
     errorMessage.value = ''
     imageInput.reset()
     if (props.zoom !== ZOOM.default) emit('update:zoom', ZOOM.default)
@@ -394,15 +380,34 @@ const renderPreview = () => {
 }
 watch([editorInstances, hoveredId, editAllows, () => props.selectedLabel], () => nextTick(renderPreview), { immediate: true })
 
+// Labels the unclear-area clear would remove, drawn while its button is hovered.
+const unclearMask = computed(() => props.uncertaintyMask && props.image && rendered.value && !props.cropping
+  ? getLabelMask(props.image) : null)
+const renderClearPreview = () => {
+  const canvas = clearPreviewCanvasRef.value, mask = unclearMask.value
+  if (!canvas) return
+  const show = props.previewUnclearClear && mask
+  canvas.width = show ? mask.width : 0
+  canvas.height = show ? mask.height : 0
+  if (!show) return
+  const context = canvas.getContext('2d')
+  const pixels = context.createImageData(mask.width, mask.height)
+  for (const i of labelsWhere(mask, allowsUnclear(props.uncertaintyMask))) pixels.data.set(VIEW.clearPreview, i * 4)
+  context.putImageData(pixels, 0, 0)
+}
+watch([() => props.previewUnclearClear, unclearMask, labelRevision], () => nextTick(renderClearPreview))
+const hasUnclearLabels = computed(() => {
+  labelRevision.value
+  return !!unclearMask.value && labelsWhere(unclearMask.value, allowsUnclear(props.uncertaintyMask)).length > 0
+})
+
 defineExpose({
   focus,
   resetLabels,
+  clearUnclear,
+  hasUnclearLabels,
   redoStroke,
   undoStroke,
-  togglePrediction,
-  toggleUncertainty,
-  toggleEdits,
-  adjustOpacity,
 })
 </script>
 
@@ -412,13 +417,6 @@ defineExpose({
     <div class="workspace__content">
       <div v-show="image && rendered" class="workspace__editor">
         <div class="canvas-viewport">
-          <div v-if="processing" class="workspace__processing" role="status" aria-live="polite">
-            <span class="workspace__spinner" aria-hidden="true"></span>
-            Processing…
-          </div>
-          <div v-else-if="uncertaintyVisible && !cropping" class="workspace__edit-scope">
-            {{ uncertaintyMask ? 'Labeling unclear areas only' : 'Run prediction to label unclear areas' }}
-          </div>
           <div
             ref="stackRef"
             class="canvas-stack"
@@ -446,32 +444,33 @@ defineExpose({
               v-show="predictionVisible"
               class="workspace__mask"
               :src="resultImage"
-              :style="{ opacity: resultOpacity }"
+              :style="{ opacity: predictionOpacity }"
               draggable="false"
               alt="Prediction mask over the original image"
             />
             <img
-              v-if="resultImage && uncertaintyImage && !cropping"
-              v-show="uncertaintyVisible"
+              v-if="uncertaintyImage && unclearActive"
               class="workspace__uncertainty"
               :src="uncertaintyImage"
-              :style="{ opacity: resultOpacity * 0.35 }"
               draggable="false"
-              alt="Unclear prediction areas"
+              alt="Areas outside the unclear prediction"
             />
             <canvas ref="previewCanvasRef" class="workspace__region-preview" aria-hidden="true"></canvas>
             <canvas
-              v-show="labelsVisible && resultImage && !cropping"
+              v-show="editsVisible && resultImage && !cropping"
               ref="resultLabelOutlineCanvasRef"
               class="workspace__result-label-outline"
+              :style="{ opacity: editsOpacity }"
               aria-hidden="true"
             ></canvas>
             <canvas
-              v-show="labelsVisible && !cropping"
+              v-show="editsVisible && !cropping"
               ref="labelCanvasRef"
               class="workspace__labels"
+              :style="{ opacity: editsOpacity }"
               :aria-label="image ? image.name + ' labels' : undefined"
             ></canvas>
+            <canvas ref="clearPreviewCanvasRef" class="workspace__clear-preview" aria-hidden="true"></canvas>
             <canvas
               ref="proposalCanvasRef"
               v-show="instances && !cropping"
@@ -489,40 +488,12 @@ defineExpose({
           </div>
         </div>
         <div ref="controlsRef" class="workspace__controls">
-        <ResultControls v-show="!cropping"
-          v-model:prediction="predictionVisible"
-          v-model:unclear="uncertaintyVisible"
-          v-model:edits="labelsVisible"
-          v-model:opacity="resultOpacity"
-          :can-download="canDownload"
-          :downloading="downloading"
-          :busy="busy"
-          @download="emit('download')"
-        />
+        <ClassRatio v-show="!cropping" :counts="classCounts" />
         </div>
       </div>
-      <p v-if="image && !rendered && !errorMessage" class="workspace__status">
-        Loading...
-      </p>
       <p v-if="errorMessage" class="workspace__error" role="alert">
         {{ errorMessage }}
       </p>
     </div>
   </section>
 </template>
-
-<style scoped>
-.canvas-viewport { position: relative; }
-.workspace__processing, .workspace__edit-scope {
-  position: absolute; top: 12px; left: 12px; z-index: 10; pointer-events: none;
-  display: flex; align-items: center; gap: 9px; padding: 10px 14px;
-  border-radius: 8px; background: #172b46; color: #fff; font-size: 14px;
-  box-shadow: 0 2px 10px #0005;
-}
-.workspace__edit-scope { font-size: 12px; padding: 7px 10px; }
-.workspace__spinner {
-  width: 20px; height: 20px; border: 3px solid #ffffff50; border-top-color: #fff;
-  border-radius: 50%; animation: processing-spin .8s linear infinite;
-}
-@keyframes processing-spin { to { transform: rotate(360deg); } }
-</style>

@@ -1,19 +1,12 @@
+import { ERASER_KEY, LABELS } from '../../config.js'
+
 const wheelKeys = new Set()
 
 export const keyAction = (code, key = '') => {
-  const label = ['KeyQ', 'KeyW', 'KeyE', 'KeyR'].indexOf(code)
+  const label = LABELS.findIndex(({ key }) => code === 'Digit' + key || code === 'Numpad' + key)
   if (label >= 0) return { name: 'label', value: label }
-  if (code === 'KeyT') return { name: 'eraser' }
+  if (code === 'Key' + ERASER_KEY) return { name: 'eraser' }
   if (code === 'Space') return { name: 'apply' }
-  if (code === 'Digit1' || code === 'Numpad1') {
-    return { name: 'toggle-prediction' }
-  }
-  if (code === 'Digit2' || code === 'Numpad2') {
-    return { name: 'toggle-uncertainty' }
-  }
-  if (code === 'Digit3' || code === 'Numpad3') {
-    return { name: 'toggle-edits' }
-  }
   if (key === '+' || code === 'NumpadAdd') {
     return { name: 'opacity-up' }
   }

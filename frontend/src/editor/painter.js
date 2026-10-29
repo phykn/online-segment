@@ -4,7 +4,6 @@ import {
   getLabelMask,
   hasImageLabels,
   markLabelMaskChanged,
-  resetLabelMask,
 } from './masks.js'
 
 const HISTORY_LIMIT = 100
@@ -86,6 +85,15 @@ const setLabel = (mask, index, label, changes = null) => {
   }
   mask.data[index] = label
   return true
+}
+
+export const labelsWhere = (mask, allows = null) => {
+  const found = []
+  for (let i = 0; i < mask.data.length; i += 1) {
+    if (mask.data[i] !== ERASER_LABEL && (!allows
+      || allows(i % mask.width, Math.floor(i / mask.width), mask.width, mask.height))) found.push(i)
+  }
+  return found
 }
 
 export const paintMaskLine = (
@@ -354,21 +362,18 @@ export const usePainter = () => {
     context.putImageData(imageData, 0, 0)
   }
 
-  const resetForImage = (image, canvas, mirrorCanvas = null) => {
+  const clearLabels = (image, allows = null) => {
     const mask = getLabelMask(image)
-    if (!mask?.labeledCount) return
     const before = new Map()
-    for (let i = 0; i < mask.data.length; i += 1) {
-      if (mask.data[i] !== ERASER_LABEL) before.set(i, mask.data[i])
-    }
-    if (!resetLabelMask(image)) return
+    for (const i of mask ? labelsWhere(mask, allows) : []) before.set(i, mask.data[i])
+    if (!before.size) return false
+    for (const i of before.keys()) setLabel(mask, i, ERASER_LABEL)
+    markLabelMaskChanged(image)
     const strokes = getHistory(image)
     strokes.undo.push({ before, after: new Map([...before.keys()].map(i => [i, ERASER_LABEL])) })
     if (strokes.undo.length > HISTORY_LIMIT) strokes.undo.shift()
     strokes.redo = []
-    if (image !== currentImage) return
-    render(canvas)
-    render(mirrorCanvas, true)
+    return true
   }
 
   const stamp = (
@@ -443,7 +448,7 @@ export const usePainter = () => {
     prepare,
     render,
     redo,
-    resetForImage,
+    clearLabels,
     stamp,
     undo,
   }

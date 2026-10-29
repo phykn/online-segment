@@ -3,7 +3,7 @@ import unittest
 from pydantic import ValidationError
 
 from src.config import config, CellposeConfig, ExportConfig
-from src.api.schema import PredRequest
+from src.api.schema import Mask, PredRequest
 
 
 class ConfigTests(unittest.TestCase):
@@ -27,8 +27,15 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(channel=channel), self.assertRaises(ValidationError):
                 ExportConfig.model_validate({
                     **config.export.model_dump(),
-                    'colors': [(channel, 0, 0)] * 4,
+                    'colors': [(channel, 0, 0)] * 10,
                 })
+
+    def test_masks_accept_ten_classes_matching_the_palette(self):
+        self.assertEqual(len(config.export.colors), 10)
+        Mask(width=3, height=1, runs=[(-1, 1), (0, 1), (9, 1)])
+        for label in (-2, 10):
+            with self.subTest(label=label), self.assertRaises(ValidationError):
+                Mask(width=1, height=1, runs=[(label, 1)])
 
     def test_invalid_web_cellpose_settings_are_rejected(self):
         for settings in ({'diameter': 0}, {'diameter': float('nan')}, {'min_area': 0},

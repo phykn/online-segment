@@ -82,16 +82,6 @@ export const markLabelMaskChanged = (image) => {
 export const hasImageLabels = (image) =>
   (getLabelMask(image)?.labeledCount ?? 0) > 0
 
-export const resetLabelMask = (image) => {
-  const mask = getLabelMask(image)
-  if (!mask) return false
-
-  mask.data.fill(ERASER_LABEL)
-  mask.labeledCount = 0
-  markLabelMaskChanged(image)
-  return true
-}
-
 export const getLabelMaskSnapshot = (image) => {
   const mask = getLabelMask(image)
   if (!mask) return null

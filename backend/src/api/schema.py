@@ -1,9 +1,9 @@
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 from src.config import CellposeParameters
 
-LabelValue = Literal[-1, 0, 1, 2, 3]
+LabelValue = Annotated[int, Field(ge=-1, le=9)]
 
 
 class SessionResponse(BaseModel):

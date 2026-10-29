@@ -30,6 +30,9 @@ export const useModel = ({
   const resultImage = computed(() =>
     result.value?.image === selectedImage.value ? result.value.url : '',
   )
+  const resultMask = computed(() =>
+    result.value?.image === selectedImage.value ? result.value.mask : null,
+  )
   const uncertaintyImage = computed(() =>
     result.value?.image === selectedImage.value
       ? result.value.uncertaintyUrl
@@ -211,6 +214,7 @@ export const useModel = ({
     updateEdits,
     error,
     resultImage,
+    resultMask,
     uncertaintyImage,
     uncertaintyMask,
     predictionVersion,
