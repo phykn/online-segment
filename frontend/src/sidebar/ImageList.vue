@@ -20,7 +20,7 @@ const props = defineProps({
     type: Boolean,
     required: true,
   },
-  filter: { type: String, default: '' },
+  filter: { type: String, required: true },
 })
 
 const emit = defineEmits(['add-files', 'select', 'remove'])
@@ -54,7 +54,7 @@ const handleDrop = (event) => {
   >
     <template v-for="(image, index) in images" :key="getFileKey(image)">
     <li
-      v-if="!filter || (filter === 'trained') === labeledImages.has(image)"
+      v-if="(filter === 'trained') === labeledImages.has(image)"
       class="image-list__item"
       :class="{
         'image-list__item--selected': index === selectedIndex,

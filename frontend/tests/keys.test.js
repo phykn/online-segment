@@ -22,7 +22,12 @@ test('maps label, eraser, and apply shortcuts', () => {
   assert.deepEqual(keyAction('Minus', '-'), { name: 'opacity-down' })
   assert.deepEqual(keyAction('NumpadAdd', '+'), { name: 'opacity-up' })
   assert.deepEqual(keyAction('NumpadSubtract', '-'), { name: 'opacity-down' })
-  for (const code of ['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'Enter', 'NumpadEnter', 'Delete']) {
+  assert.deepEqual(keyAction('KeyE'), { name: 'toggle-edits' })
+  assert.deepEqual(keyAction('KeyP'), { name: 'toggle-prediction' })
+  assert.deepEqual(keyAction('KeyU'), { name: 'toggle-unclear' })
+  assert.deepEqual(keyAction('ArrowUp'), { name: 'previous-image' })
+  assert.deepEqual(keyAction('ArrowDown'), { name: 'next-image' })
+  for (const code of ['KeyQ', 'KeyW', 'KeyR', 'Enter', 'NumpadEnter', 'Delete']) {
     assert.equal(keyAction(code), null)
   }
 })
@@ -56,6 +61,9 @@ test('uses B and Z as wheel modes', () => {
   setWheelKey('KeyB', false)
   assert.equal(wheelAction(), null)
   assert.equal(setWheelKey('AltLeft', true), false)
+  clearWheelKeys()
+  assert.equal(wheelAction({ ctrlKey: true }), 'zoom')
+  assert.equal(wheelAction({ ctrlKey: false }), null)
 })
 
 test('recognizes undo and redo shortcuts', () => {

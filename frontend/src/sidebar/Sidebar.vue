@@ -7,6 +7,7 @@ import MiniList from './MiniList.vue'
 import BatchExport from './BatchExport.vue'
 
 const props = defineProps({
+  filter: { type: String, required: true },
   downloading: { type: Boolean, required: true },
   canDownload: { type: Boolean, required: true },
   downloadingAll: { type: Boolean, required: true },
@@ -31,6 +32,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
+  'update:filter',
   'download',
   'download-all',
   'add-images',
@@ -43,8 +45,6 @@ const fileInput = ref(null)
 const isDragging = ref(false)
 const collapsed = ref(false)
 const version = __APP_VERSION__
-// '' lists every image; 'predict' only unlabeled ones, 'trained' only labeled ones.
-const filter = ref('')
 const trainedCount = computed(() => props.images.filter(image => props.labeledImages.has(image)).length)
 const filters = computed(() => [
   { value: 'predict', name: 'Predict', count: props.images.length - trainedCount.value },
@@ -160,7 +160,7 @@ const handleDragLeave = (event) => {
 
     <div class="list-filters" role="group" aria-label="Filter images">
       <button v-for="item in filters" :key="item.value" class="list-filter" type="button"
-        :aria-pressed="filter === item.value" @click="filter = filter === item.value ? '' : item.value">
+        :aria-pressed="filter === item.value" @click="emit('update:filter', item.value)">
         {{ item.name }}<span class="list-filter__count">{{ item.count }}</span>
       </button>
     </div>
@@ -194,12 +194,9 @@ const handleDragLeave = (event) => {
       </div>
       <div id="shortcut-help" class="shortcut-help" popover>
         <ul class="shortcut-list" aria-label="Keyboard shortcuts">
-          <li><kbd>1 – 9, 0</kbd><span>Label</span></li>
-          <li><kbd>T</kbd><span>Erase</span></li>
           <li><kbd>Drag</kbd><span>Paint</span></li>
-          <li><kbd>Space</kbd><span>Train &amp; predict</span></li>
-          <li><kbd>B + wheel</kbd><span>Brush size</span></li>
-          <li><kbd>Z + wheel</kbd><span>Zoom</span></li>
+          <li><kbd>↑ / ↓</kbd><span>Previous / next image</span></li>
+          <li><kbd>Ctrl + wheel</kbd><span>Zoom</span></li>
           <li><kbd>+ / −</kbd><span>Prediction opacity</span></li>
           <li><kbd>Ctrl + Z</kbd><span>Undo</span></li>
           <li><kbd>Ctrl + Shift + Z</kbd><span>Redo</span></li>

@@ -23,6 +23,15 @@ export const ERASER_LABEL = -1
 
 export const ERASER_KEY = 'T'
 
+// Held with the wheel (brush, zoom) or pressed to toggle a view layer.
+export const VIEW_KEYS = Object.freeze({
+  brush: 'B',
+  zoom: 'Z',
+  edits: 'E',
+  prediction: 'P',
+  unclear: 'U',
+})
+
 export const IMAGE_WIDTH = 768
 
 export const LABEL_ALPHA = 230

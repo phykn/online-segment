@@ -1,4 +1,4 @@
-import { ERASER_KEY, LABELS } from '../../config.js'
+import { ERASER_KEY, LABELS, VIEW_KEYS } from '../../config.js'
 
 const wheelKeys = new Set()
 
@@ -7,6 +7,11 @@ export const keyAction = (code, key = '') => {
   if (label >= 0) return { name: 'label', value: label }
   if (code === 'Key' + ERASER_KEY) return { name: 'eraser' }
   if (code === 'Space') return { name: 'apply' }
+  if (code === 'Key' + VIEW_KEYS.edits) return { name: 'toggle-edits' }
+  if (code === 'Key' + VIEW_KEYS.prediction) return { name: 'toggle-prediction' }
+  if (code === 'Key' + VIEW_KEYS.unclear) return { name: 'toggle-unclear' }
+  if (code === 'ArrowUp') return { name: 'previous-image' }
+  if (code === 'ArrowDown') return { name: 'next-image' }
   if (key === '+' || code === 'NumpadAdd') {
     return { name: 'opacity-up' }
   }
@@ -38,7 +43,7 @@ export const isRedoShortcut = (event) =>
   event.shiftKey
 
 export const setWheelKey = (code, pressed) => {
-  if (code !== 'KeyB' && code !== 'KeyZ') return false
+  if (code !== 'Key' + VIEW_KEYS.brush && code !== 'Key' + VIEW_KEYS.zoom) return false
   if (pressed) wheelKeys.add(code)
   else wheelKeys.delete(code)
   return true
@@ -46,8 +51,9 @@ export const setWheelKey = (code, pressed) => {
 
 export const clearWheelKeys = () => wheelKeys.clear()
 
-export const wheelAction = () => {
-  if (wheelKeys.has('KeyZ')) return 'zoom'
-  if (wheelKeys.has('KeyB')) return 'brush'
+// Ctrl + wheel also zooms; trackpad pinches arrive as Ctrl + wheel too.
+export const wheelAction = (event = {}) => {
+  if (event.ctrlKey || wheelKeys.has('Key' + VIEW_KEYS.zoom)) return 'zoom'
+  if (wheelKeys.has('Key' + VIEW_KEYS.brush)) return 'brush'
   return null
 }

@@ -96,6 +96,14 @@ const {
 } = model
 
 watch(predictionVersion, () => { predictionVisible.value = true })
+
+// The image list shows unlabeled ('predict') or labeled ('trained') images; one is always chosen,
+// and it follows the selected image so the selection stays in view.
+const listFilter = ref('predict')
+const filterOf = image => labeledImages.value.has(image) ? 'trained' : 'predict'
+watch([selectedImage, labeledImages], ([image]) => {
+  if (image) listFilter.value = filterOf(image)
+})
 const hasLabels = computed(() => labeledImages.value.has(selectedImage.value))
 const needsTraining = computed(() => hasLabels.value && !canDownloadResult.value && !predicting.value)
 const canClearUnclear = computed(() => !!workspaceRef.value?.hasUnclearLabels
@@ -210,6 +218,16 @@ const handleShortcut = (event) => {
     selectedLabel.value = ERASER_LABEL
   } else if (action.name === 'apply') {
     if (!event.repeat) train()
+  } else if (action.name === 'toggle-edits') {
+    if (!event.repeat) editsVisible.value = !editsVisible.value
+  } else if (action.name === 'toggle-prediction') {
+    if (!event.repeat && resultImage.value) predictionVisible.value = !predictionVisible.value
+  } else if (action.name === 'toggle-unclear') {
+    if (!event.repeat && uncertaintyMask.value) unclearOnly.value = !unclearOnly.value
+  } else if (action.name === 'previous-image') {
+    stepImage(-1)
+  } else if (action.name === 'next-image') {
+    stepImage(1)
   } else if (action.name === 'opacity-up') {
     adjustOpacity(OPACITY.step)
   } else if (action.name === 'opacity-down') {
@@ -302,6 +320,13 @@ const selectAt = (index) => {
   }
 }
 
+const stepImage = (step) => {
+  if (busy.value) return
+  const visible = images.value.filter(image => filterOf(image) === listFilter.value)
+  const next = visible[visible.indexOf(selectedImage.value) + step]
+  if (next) selectAt(images.value.indexOf(next))
+}
+
 const handleLabelState = (state) => {
   updateLabelState(state)
   if (state.changed) clearError()
@@ -316,6 +341,7 @@ const handleLabelState = (state) => {
       :images="images"
       :selected-index="selectedIndex"
       :labeled-images="labeledImages"
+      v-model:filter="listFilter"
       :busy="busy || projectBusy || cropOpen"
       :downloading="downloading"
       :downloading-all="downloadingAll"
@@ -354,6 +380,7 @@ const handleLabelState = (state) => {
         :uncertainty-image="uncertaintyImage"
         :uncertainty-mask="uncertaintyMask"
         :prediction-version="predictionVersion"
+        :predicting="predicting"
         :prediction-visible="predictionVisible"
         :edits-visible="editsVisible"
         :prediction-opacity="predictionOpacity"

@@ -25,6 +25,7 @@ const props = defineProps({
   previewUnclearClear: { type: Boolean, default: false },
   resultMask: { type: Object, default: null },
   predictionVersion: { type: Number, default: 0 },
+  predicting: { type: Boolean, default: false },
   uncertaintyMask: { type: Object, default: null },
   image: {
     type: File,
@@ -353,7 +354,10 @@ defineExpose({
     :style="canvasHeight ? { '--canvas-max-height': canvasHeight + 'px' } : undefined">
     <div class="workspace__content">
       <div v-show="image && rendered" class="workspace__editor">
-        <div class="canvas-viewport">
+        <div class="canvas-viewport" :aria-busy="predicting">
+          <div v-if="predicting" class="canvas-busy" role="status">
+            <span class="spinner" aria-hidden="true"></span>Predicting…
+          </div>
           <div
             ref="stackRef"
             class="canvas-stack"

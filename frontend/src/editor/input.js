@@ -59,7 +59,7 @@ export const useCanvasInput = ({
 
   const wheel = (event) => {
     if (!canEdit()) return
-    const action = wheelAction()
+    const action = wheelAction(event)
     if (!action) return
 
     event.preventDefault()

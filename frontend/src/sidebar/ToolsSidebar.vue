@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue'
 
-import { BRUSH_SIZE, OPACITY, ZOOM } from '../../config.js'
+import { BRUSH_SIZE, OPACITY, VIEW_KEYS, ZOOM } from '../../config.js'
 
 const props = defineProps({
   images: { type: Array, required: true },
@@ -40,10 +40,12 @@ const resize = event => {
   emit('resize', widthDraft.value === '' ? null : widthDraft.value)
 }
 const percent = value => Math.round(value * 100) + '%'
+const NO_PREDICTION = 'Train & predict first'
 const views = [
-  { name: 'Edits', visible: 'editsVisible', opacity: 'editsOpacity', event: 'edits' },
-  { name: 'Prediction', visible: 'predictionVisible', opacity: 'predictionOpacity', event: 'prediction' },
+  { name: 'Edits', key: VIEW_KEYS.edits, visible: 'editsVisible', opacity: 'editsOpacity', event: 'edits' },
+  { name: 'Prediction', key: VIEW_KEYS.prediction, visible: 'predictionVisible', opacity: 'predictionOpacity', event: 'prediction' },
 ]
+const viewDisabled = view => view.name === 'Prediction' && !props.hasPrediction
 </script>
 
 <template>
@@ -70,15 +72,15 @@ const views = [
 
       <section class="tool-group" aria-labelledby="canvas-group">
         <h2 id="canvas-group">Canvas</h2>
-        <label class="slider-row">
-          <span>Brush</span>
+        <label class="slider-row" :title="'Hold ' + VIEW_KEYS.brush + ' and scroll'">
+          <span><kbd class="key-hint">{{ VIEW_KEYS.brush }}</kbd>Brush</span>
           <input type="range" :min="BRUSH_SIZE.min" :max="BRUSH_SIZE.max" :step="BRUSH_SIZE.step" :value="brushSize"
             :aria-valuetext="brushSize + ' px'" @input="emit('update:brush-size', Number($event.target.value))"
             @pointerup="$event.currentTarget.blur()" @pointercancel="$event.currentTarget.blur()" />
           <output>{{ brushSize }} px</output>
         </label>
-        <label class="slider-row">
-          <span>Zoom</span>
+        <label class="slider-row" :title="'Hold ' + VIEW_KEYS.zoom + ' or Ctrl and scroll'">
+          <span><kbd class="key-hint">{{ VIEW_KEYS.zoom }}</kbd>Zoom</span>
           <input type="range" :min="ZOOM.min" :max="ZOOM.max" :step="ZOOM.step" :value="zoom"
             :aria-valuetext="percent(zoom)" @input="emit('update:zoom', Number($event.target.value))"
             @pointerup="$event.currentTarget.blur()" @pointercancel="$event.currentTarget.blur()" />
@@ -118,15 +120,15 @@ const views = [
 
       <section class="tool-group" aria-labelledby="view-group">
         <h2 id="view-group">View</h2>
-        <div v-for="view in views" :key="view.name" class="view-row">
+        <div v-for="view in views" :key="view.name" class="view-row" :title="viewDisabled(view) ? NO_PREDICTION : undefined">
           <label class="switch">
-            <input type="checkbox" :checked="props[view.visible]" :disabled="view.name === 'Prediction' && !hasPrediction"
+            <input type="checkbox" :checked="props[view.visible] && !viewDisabled(view)" :disabled="viewDisabled(view)"
               @change="emit('update:' + view.event + '-visible', $event.target.checked)" />
             <span class="switch__track" aria-hidden="true"><span></span></span>
-            {{ view.name }}
+            <kbd class="key-hint">{{ view.key }}</kbd>{{ view.name }}
           </label>
           <input type="range" :min="OPACITY.min" :max="OPACITY.max" :step="OPACITY.step" :value="props[view.opacity]"
-            :aria-label="view.name + ' opacity'" :aria-valuetext="percent(props[view.opacity])"
+            :disabled="viewDisabled(view)" :aria-label="view.name + ' opacity'" :aria-valuetext="percent(props[view.opacity])"
             @input="emit('update:' + view.event + '-opacity', Number($event.target.value))"
             @pointerup="$event.currentTarget.blur()" @pointercancel="$event.currentTarget.blur()" />
           <output>{{ percent(props[view.opacity]) }}</output>
@@ -135,11 +137,11 @@ const views = [
 
       <section class="tool-group" aria-labelledby="reach-group">
         <h2 id="reach-group">Brush reaches</h2>
-        <label class="switch" title="Paint only inside unclear prediction areas">
+        <label class="switch" :title="hasUnclear ? 'Paint only inside unclear prediction areas' : NO_PREDICTION">
           <input type="checkbox" :checked="unclearOnly && hasUnclear" :disabled="!hasUnclear"
             @change="emit('update:unclear-only', $event.target.checked)" />
           <span class="switch__track" aria-hidden="true"><span></span></span>
-          Unclear
+          <kbd class="key-hint">{{ VIEW_KEYS.unclear }}</kbd>Unclear
         </label>
       </section>
 

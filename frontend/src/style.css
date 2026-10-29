@@ -964,6 +964,44 @@ button {
   cursor: pointer;
 }
 
+.key-hint {
+  display: inline-block;
+  min-width: 18px;
+  margin-right: 6px;
+  padding: 1px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--surface-soft);
+  font: inherit;
+  font-size: 10px;
+  text-align: center;
+}
+
+.view-row input[type="range"]:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.canvas-busy {
+  display: flex;
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 50%;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--canvas);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  font-size: 13px;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
 .switch:has(input:disabled) {
   cursor: default;
   opacity: 0.5;
