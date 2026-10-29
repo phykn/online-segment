@@ -14,6 +14,7 @@ const props = defineProps({
   downloading: { type: Boolean, required: true },
   canDownload: { type: Boolean, required: true },
   needsTraining: { type: Boolean, default: false },
+  predicting: { type: Boolean, default: false },
   downloadingAll: { type: Boolean, required: true },
   downloadProgress: { type: Number, required: true },
   canDownloadAll: { type: Boolean, required: true },
@@ -59,7 +60,7 @@ const shortcutGroups = [
     { keys: [[ERASER_KEY]], action: 'Eraser' },
     { keys: [['Drag']], action: 'Paint' },
     { keys: [[VIEW_KEYS.brush, 'Wheel'], ['['], [']']], action: 'Brush size' },
-    { keys: [[VIEW_KEYS.unclear]], action: 'Paint only uncertain areas' },
+    { keys: [[VIEW_KEYS.unclear]], action: 'Turn Uncertain only on or off' },
     { keys: [[MOD_KEY, 'Z']], action: 'Undo' },
     { keys: MOD_KEY === 'Ctrl' ? [['Ctrl', 'Shift', 'Z'], ['Ctrl', 'Y']] : [[MOD_KEY, 'Shift', 'Z']], action: 'Redo' },
   ],
@@ -216,7 +217,7 @@ const handleDragLeave = (event) => {
       <div class="button-pair">
         <button class="model-button model-button--danger" type="button" :disabled="busy || !images.length" title="Remove every image and its labels" @click="emit('clear-images')">Remove all</button>
         <button class="model-button busy-button" type="button" :disabled="busy || !canDownload || downloadingAll"
-:title="canDownload ? 'Download this image and its mask'
+:title="canDownload ? 'Download this image and its mask' : predicting ? 'Ready when the prediction finishes'
             : needsTraining ? 'Labels changed: train & predict again' : 'Train & predict first'"
           @click="emit('download')">
           Download<span v-if="downloading" class="spinner" aria-hidden="true"></span>

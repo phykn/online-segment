@@ -19,6 +19,9 @@ export const ZOOM = Object.freeze({
   max: 8,
   step: 0.1,
   default: 1,
+  // Each 100 px of wheel scroll, about one mouse notch, zooms by this factor; a trackpad pinch sends many
+  // small scrolls, so it zooms smoothly.
+  wheelFactor: 1.25,
 })
 
 export const ERASER_LABEL = -1

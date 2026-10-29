@@ -153,3 +153,18 @@ test('does not clear shared pan when a hidden viewport receives zoom', () => {
   assert.equal(sharedPan.x.value, 20)
   assert.equal(sharedPan.y.value, -20)
 })
+
+test('wheel zoom follows how far the wheel moved, so a notch and a pinch both feel right', () => {
+  const canvas = { width: 100, height: 100, getBoundingClientRect: () => ({ left: 0, top: 0, width: 100, height: 100 }) }
+  const notch = useViewport(ref(canvas), () => 24)
+  notch.handleZoomWheel({ clientX: 50, clientY: 50, deltaY: -100 })
+  assert.equal(notch.zoom.value, 1.25)
+  const pinch = useViewport(ref(canvas), () => 24)
+  for (let i = 0; i < 50; i += 1) pinch.handleZoomWheel({ clientX: 50, clientY: 50, deltaY: -2 })
+  assert.ok(Math.abs(pinch.zoom.value - 1.25) < 0.02)
+  const lines = useViewport(ref(canvas), () => 24)
+  lines.handleZoomWheel({ clientX: 50, clientY: 50, deltaY: -3, deltaMode: 1 })
+  assert.equal(lines.zoom.value, 1.25)
+  for (let i = 0; i < 6; i += 1) notch.handleZoomWheel({ clientX: 50, clientY: 50, deltaY: -100 })
+  assert.ok(notch.zoom.value > 4)
+})

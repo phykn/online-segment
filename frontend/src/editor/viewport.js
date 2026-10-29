@@ -4,6 +4,8 @@ import { ZOOM } from '../../config.js'
 
 const MIDDLE_BUTTON = 1
 const CURSOR_BORDER = 4
+// Pixels per line for wheels that scroll by lines (Firefox sends 3 lines a notch).
+const WHEEL_LINE = 100 / 3
 
 const clamp = (value, minimum, maximum) =>
   Math.min(maximum, Math.max(minimum, value))
@@ -97,7 +99,7 @@ export const useViewport = (canvasRef, getBrushSize, sharedPan = null, getViewSi
   }
 
   const setZoom = (value, anchor = null) => {
-    const next = Math.round(clamp(value, ZOOM.min, ZOOM.max) * 10) / 10
+    const next = Math.round(clamp(value, ZOOM.min, ZOOM.max) * 1000) / 1000
     if (next === zoom.value) return
     const canvas = canvasRef.value
     const bounds = canvas?.getBoundingClientRect()
@@ -120,8 +122,8 @@ export const useViewport = (canvasRef, getBrushSize, sharedPan = null, getViewSi
   }
 
   const handleZoomWheel = (event) => {
-    const direction = event.deltaY < 0 ? ZOOM.step : -ZOOM.step
-    setZoom(zoom.value + direction, event)
+    const pixels = event.deltaMode ? event.deltaY * WHEEL_LINE : event.deltaY
+    setZoom(zoom.value * ZOOM.wheelFactor ** (-pixels / 100), event)
   }
 
   const startPan = (event) => {

@@ -424,6 +424,7 @@ const handleLabelState = (state) => {
       :download-progress="exportProgress"
       :can-download="canDownloadResult"
       :needs-training="needsTraining"
+      :predicting="predicting"
       :can-download-all="canDownloadAll && canTrain"
       @download="downloadResult"
       @download-all="downloadAll"

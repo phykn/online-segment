@@ -104,9 +104,11 @@ const errorMessage = ref('')
 const labelRevision = ref(0)
 const unclearActive = computed(() => props.unclearOnly && !!props.uncertaintyMask && !props.cropping)
 const editAllows = computed(() => unclearActive.value ? allowsUnclear(props.uncertaintyMask) : null)
+// The data bar measures what is on screen: the prediction while it shows, otherwise the labels.
+const ratioSource = computed(() => props.resultMask && props.predictionVisible ? 'Prediction' : 'Labels')
 const classCounts = computed(() => {
   labelRevision.value
-  if (props.resultMask) return countRuns(props.resultMask)
+  if (ratioSource.value === 'Prediction') return countRuns(props.resultMask)
   const mask = rendered.value && props.image ? getLabelMask(props.image) : null
   return mask ? countLabels(mask.data) : null
 })
@@ -462,7 +464,7 @@ defineExpose({
         <div ref="controlsRef" class="workspace__controls">
         <!-- Hidden but still taking its room while cropping, so the image does not shift. -->
         <ClassRatio :style="{ visibility: cropping ? 'hidden' : null }" :counts="classCounts"
-          :source="resultMask ? 'Prediction' : 'Labels'" :predicting="predicting" :progress="predictionProgress" :name="image?.name" :size="editorSize" />
+          :source="ratioSource" :predicting="predicting" :progress="predictionProgress" :name="image?.name" :size="editorSize" />
         </div>
       </div>
       <p v-if="errorMessage" class="workspace__error" role="alert">
