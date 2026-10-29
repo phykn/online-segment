@@ -15,6 +15,10 @@ export const keyAction = (code, key = '') => {
   if (code === 'Key' + VIEW_KEYS.edits) return { name: 'toggle-edits' }
   if (code === 'Key' + VIEW_KEYS.prediction) return { name: 'toggle-prediction' }
   if (code === 'Key' + VIEW_KEYS.unclear) return { name: 'toggle-unclear' }
+  if (code === 'Key' + VIEW_KEYS.fit) return { name: 'fit' }
+  // [ and ] step the brush size, as in most paint programs.
+  if (code === 'BracketLeft') return { name: 'brush-down' }
+  if (code === 'BracketRight') return { name: 'brush-up' }
   if (code === 'ArrowUp') return { name: 'previous-image' }
   if (code === 'ArrowDown') return { name: 'next-image' }
   // = is the unshifted + key.

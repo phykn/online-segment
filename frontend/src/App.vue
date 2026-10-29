@@ -267,6 +267,11 @@ const handleShortcut = (event) => {
     adjustOpacity(OPACITY.step)
   } else if (action.name === 'opacity-down') {
     adjustOpacity(-OPACITY.step)
+  } else if (action.name === 'fit') {
+    zoom.value = ZOOM.min
+  } else if (action.name === 'brush-down' || action.name === 'brush-up') {
+    const step = action.name === 'brush-up' ? BRUSH_SIZE.step : -BRUSH_SIZE.step
+    brushSize.value = Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, brushSize.value + step))
   }
   event.preventDefault()
 }

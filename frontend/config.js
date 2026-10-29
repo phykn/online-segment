@@ -25,10 +25,11 @@ export const ERASER_LABEL = -1
 
 export const ERASER_KEY = 'T'
 
-// Held with the wheel (brush, zoom) or pressed to toggle a view layer.
+// Held with the wheel (brush, zoom), pressed to fit the whole image, or pressed to toggle a view layer.
 export const VIEW_KEYS = Object.freeze({
   brush: 'B',
   zoom: 'Z',
+  fit: 'F',
   edits: 'E',
   prediction: 'P',
   unclear: 'U',
@@ -68,9 +69,9 @@ export const LABELS = [
 }))
 
 export const VIEW = Object.freeze({
-  // Alpha of the shade over pixels the brush cannot reach while Unclear is on.
+  // Alpha of the shade over pixels the brush cannot reach while Uncertain only is on.
   unclearShade: 150,
-  // Labels that "Clear unclear labels" would remove, shown while hovering it.
+  // Labels that "Clear labels in uncertain areas" would remove, shown while hovering it.
   clearPreview: [255, 255, 255, 235],
   ratioDigits: 1,
 })

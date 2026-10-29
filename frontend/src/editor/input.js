@@ -10,6 +10,7 @@ const MIDDLE_BUTTON = 1
 export const useCanvasInput = ({
   canvasRef,
   sharedPan,
+  getViewSize,
   getBrushSize,
   setBrushSize,
   updateZoom,
@@ -21,7 +22,7 @@ export const useCanvasInput = ({
   finish,
   abort = () => {},
 }) => {
-  const viewport = useViewport(canvasRef, getBrushSize, sharedPan)
+  const viewport = useViewport(canvasRef, getBrushSize, sharedPan, getViewSize)
   let painting = false
   let activePointerId = null
   let lastPoint = null

@@ -26,6 +26,21 @@ test('wheel zoom keeps the image point under the pointer fixed', () => {
   assert.equal(viewport.canvasTransform.value, transform)
 })
 
+test('pans a zoomed image only until its edges meet a view that grew with the zoom', () => {
+  let viewport
+  const canvas = { getBoundingClientRect: () => {
+    const zoom = viewport?.zoom.value ?? 1
+    return { left: 0, top: 0, right: 100 * zoom, bottom: 50 * zoom, width: 100 * zoom, height: 50 * zoom }
+  } }
+  // At 2× the 100 × 50 image is 200 × 100; the view has grown to 150 × 100.
+  viewport = useViewport(ref(canvas), () => 24, null, () => ({ width: 150, height: 100 }))
+  viewport.setZoom(2)
+  viewport.panBy(-1000, -1000)
+  assert.equal(viewport.canvasTransform.value, 'translate(25px, 0px) scale(2)')
+  viewport.panBy(1000, 1000)
+  assert.equal(viewport.canvasTransform.value, 'translate(-25px, 0px) scale(2)')
+})
+
 test('uses middle-button drag for panning instead of right-button drag', () => {
   const canvas = {
     getBoundingClientRect: () => ({

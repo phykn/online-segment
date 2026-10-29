@@ -8,7 +8,8 @@ const CURSOR_BORDER = 4
 const clamp = (value, minimum, maximum) =>
   Math.min(maximum, Math.max(minimum, value))
 
-export const useViewport = (canvasRef, getBrushSize, sharedPan = null) => {
+// getViewSize(zoom) gives the visible area at that zoom, when it can be larger than the fitted image.
+export const useViewport = (canvasRef, getBrushSize, sharedPan = null, getViewSize = null) => {
   const cursorVisible = ref(false)
   const cursorStyle = ref({})
   const zoom = ref(ZOOM.default)
@@ -86,9 +87,11 @@ export const useViewport = (canvasRef, getBrushSize, sharedPan = null) => {
     cursorVisible.value = false
   }
 
+  // The zoomed image moves until its edge meets the view's edge.
   const clampPan = (width, height) => {
-    const maxX = (width * (zoom.value - ZOOM.min)) / 2
-    const maxY = (height * (zoom.value - ZOOM.min)) / 2
+    const view = getViewSize?.(zoom.value) ?? { width, height }
+    const maxX = Math.max(0, (width * zoom.value - view.width) / 2)
+    const maxY = Math.max(0, (height * zoom.value - view.height) / 2)
     panX.value = clamp(panX.value, -maxX, maxX)
     panY.value = clamp(panY.value, -maxY, maxY)
   }

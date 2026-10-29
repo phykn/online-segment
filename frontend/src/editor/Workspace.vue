@@ -91,6 +91,11 @@ const fitSize = computed(() => {
   const scale = Math.min(canvasWidth.value / size.width, canvasHeight.value / size.height)
   return { width: Math.floor(size.width * scale), height: Math.floor(size.height * scale) }
 })
+// The view grows with the zoom until it fills the free area, so a zoomed wide image uses the whole stage.
+const viewSizeAt = zoom => fitSize.value && {
+  width: Math.min(canvasWidth.value, Math.floor(fitSize.value.width * zoom)),
+  height: Math.min(canvasHeight.value, Math.floor(fitSize.value.height * zoom)),
+}
 let resizeObserver = null
 const rendered = ref(false)
 // The last drawn image stays up while the next one decodes, so stepping through images does not flash.
@@ -249,6 +254,7 @@ const beginLabelStroke = () => {
 
 const imageInput = useCanvasInput({
   canvasRef: imageCanvasRef,
+  getViewSize: viewSizeAt,
   getBrushSize: () => props.brushSize,
   setBrushSize: (size) => emit('update:brush-size', size),
   updateZoom: (zoom) => emit('update:zoom', zoom),
@@ -262,6 +268,7 @@ const imageInput = useCanvasInput({
 })
 
 const { canvasTransform, cursorStyle, cursorVisible, panning } = imageInput
+const viewSize = computed(() => viewSizeAt(imageInput.zoom.value))
 
 watch(
   [() => props.image, () => props.targetWidth, () => props.cropping, () => props.cropSource],
@@ -384,11 +391,9 @@ defineExpose({
         <span>or drop image files here</span>
       </div>
       <div v-show="image && shown" class="workspace__editor"
-        :style="fitSize ? { '--fit-width': fitSize.width + 'px' } : undefined">
-        <div class="canvas-viewport" :aria-busy="predicting">
-          <div v-if="predicting" class="canvas-busy" role="status">
-            <span class="spinner" aria-hidden="true"></span>Predicting…
-          </div>
+        :style="viewSize ? { '--view-width': viewSize.width + 'px' } : undefined">
+        <div class="canvas-viewport" :aria-busy="predicting"
+          :style="viewSize ? { width: viewSize.width + 'px', height: viewSize.height + 'px' } : undefined">
           <div
             ref="stackRef"
             class="canvas-stack"
@@ -426,7 +431,7 @@ defineExpose({
               class="workspace__uncertainty"
               :src="uncertaintyImage"
               draggable="false"
-              alt="Areas outside the unclear prediction"
+              alt="Shade over areas where the prediction is certain"
             />
             <canvas
               v-show="editsVisible && resultImage && !cropping"
@@ -454,8 +459,9 @@ defineExpose({
           </div>
         </div>
         <div ref="controlsRef" class="workspace__controls">
-        <ClassRatio v-show="!cropping" :counts="classCounts" :source="resultMask ? 'Prediction' : 'Labels'"
-          :name="image?.name" :size="editorSize" />
+        <!-- Hidden but still taking its room while cropping, so the image does not shift. -->
+        <ClassRatio :style="{ visibility: cropping ? 'hidden' : null }" :counts="classCounts"
+          :source="resultMask ? 'Prediction' : 'Labels'" :predicting="predicting" :name="image?.name" :size="editorSize" />
         </div>
       </div>
       <p v-if="errorMessage" class="workspace__error" role="alert">

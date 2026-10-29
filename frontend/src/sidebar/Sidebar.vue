@@ -54,10 +54,11 @@ const collapsed = ref(startsCollapsed())
 // alternatives (shown with /), each a combination of keys (shown with +).
 const shortcutGroups = [
   [
-    { keys: [[LABELS[0].key + '–' + LABELS.at(-1).key]], action: 'Pick a class' },
+    // 0 picks the tenth class.
+    { keys: [[LABELS[0].key + '–' + LABELS.at(-2).key], [LABELS.at(-1).key]], action: 'Pick a class' },
     { keys: [[ERASER_KEY]], action: 'Eraser' },
     { keys: [['Drag']], action: 'Paint' },
-    { keys: [[VIEW_KEYS.brush, 'Wheel']], action: 'Brush size' },
+    { keys: [[VIEW_KEYS.brush, 'Wheel'], ['['], [']']], action: 'Brush size' },
     { keys: [[VIEW_KEYS.unclear]], action: 'Turn Uncertain only on or off' },
     { keys: [[MOD_KEY, 'Z']], action: 'Undo' },
     { keys: MOD_KEY === 'Ctrl' ? [['Ctrl', 'Shift', 'Z'], ['Ctrl', 'Y']] : [[MOD_KEY, 'Shift', 'Z']], action: 'Redo' },
@@ -71,6 +72,7 @@ const shortcutGroups = [
   [
     { keys: [['↑'], ['↓']], action: 'Previous or next image' },
     { keys: [[VIEW_KEYS.zoom, 'Wheel'], [MOD_KEY, 'Wheel']], action: 'Zoom' },
+    { keys: [[VIEW_KEYS.fit]], action: 'Zoom to fit' },
     { keys: [['Wheel'], ['Middle drag']], action: 'Pan when zoomed' },
     { keys: [['Enter'], ['Esc']], action: 'Apply or cancel a crop' },
     { keys: [['?']], action: 'Show shortcuts' },
@@ -206,6 +208,9 @@ const handleDragLeave = (event) => {
     />
 
     </template>
+    <!-- The shortcut list stays one click away on the collapsed rail too. -->
+    <button v-if="collapsed" class="sidebar__help" type="button" popovertarget="shortcut-help"
+      aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
     <div v-show="!collapsed" class="sidebar__batch-controls">
       <div class="button-pair">
         <button class="model-button model-button--danger" type="button" :disabled="busy || !images.length" title="Remove every image and its labels" @click="emit('clear-images')">Remove all</button>
@@ -221,7 +226,7 @@ const handleDragLeave = (event) => {
       <div class="sidebar__footer">
         <span>v{{ version }}</span>
         <button class="help-button" type="button" popovertarget="shortcut-help" aria-label="Keyboard shortcuts"
-          title="Keyboard shortcuts">?</button>
+          title="Keyboard shortcuts (?)">?</button>
       </div>
     </div>
     <!-- Outside the collapsible part, so ? opens it while the sidebar is collapsed too. -->

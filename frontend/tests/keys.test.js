@@ -28,6 +28,9 @@ test('maps label, eraser, and apply shortcuts', () => {
   assert.deepEqual(keyAction('KeyU'), { name: 'toggle-unclear' })
   assert.deepEqual(keyAction('ArrowUp'), { name: 'previous-image' })
   assert.deepEqual(keyAction('ArrowDown'), { name: 'next-image' })
+  assert.deepEqual(keyAction('KeyF'), { name: 'fit' })
+  assert.deepEqual(keyAction('BracketLeft', '['), { name: 'brush-down' })
+  assert.deepEqual(keyAction('BracketRight', ']'), { name: 'brush-up' })
   for (const code of ['KeyQ', 'KeyW', 'KeyR', 'Enter', 'NumpadEnter', 'Delete']) {
     assert.equal(keyAction(code), null)
   }

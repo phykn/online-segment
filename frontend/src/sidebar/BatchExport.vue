@@ -35,16 +35,16 @@ const requestDownloadAll = () => {
     <span class="model-button__text">{{ downloadingAll ? 'Cancel download' : 'Download all' }}</span>
     <span v-if="downloadingAll" class="spinner" aria-hidden="true"></span>
   </button>
-  <label class="archive-name">
+  <label class="field-row archive-name">
+    <span>File name</span>
     <input
       v-model="archiveName"
       type="text"
       maxlength="120"
-      aria-label="ZIP file name"
-      title="ZIP file name"
+      title="Name of the ZIP that Download all saves"
       :disabled="busy"
       @keydown.enter.prevent="requestDownloadAll"
     />
-    <span class="archive-name__suffix">.zip</span>
+    <span class="unit">.zip</span>
   </label>
 </template>

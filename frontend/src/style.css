@@ -225,7 +225,6 @@ button {
   flex: 1;
   min-width: 0;
   min-height: 0;
-  align-items: flex-start;
   justify-content: center;
   padding: var(--control-canvas-gap) 16px 16px;
   overflow: auto;
@@ -241,17 +240,23 @@ button {
   gap: 4px;
 }
 
+/* The image sits centred in the free area with the data bar hanging under it, so a bar that wraps to
+   another line moves nothing, and a zoomed view that grows keeps its centre. */
 .workspace__editor {
-  display: flex;
+  display: grid;
   width: 100%;
   max-width: 100%;
-  flex-direction: column;
-  align-items: center;
+  min-height: 0;
+  flex: 1;
+  grid-template-rows: 1fr auto minmax(min-content, 1fr);
+  justify-items: center;
 }
 
 .canvas-viewport {
   display: grid;
   position: relative;
+  grid-row: 2;
+  place-items: center;
   max-width: 100%;
   max-height: var(--canvas-max-height);
   overflow: hidden;
@@ -262,6 +267,8 @@ button {
 .canvas-stack {
   display: grid;
   position: relative;
+  /* The layers fill the stack exactly, so zoom and pan line up with its edges. */
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   max-width: 100%;
   max-height: var(--canvas-max-height);
   transform-origin: center;
@@ -321,34 +328,11 @@ button {
   transform: translate(-50%, -50%);
 }
 
-.canvas-busy {
-  display: flex;
-  position: absolute;
-  z-index: 7;
-  top: 10px;
-  left: 50%;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 12px 5px 10px;
-  border-radius: 999px;
-  color: var(--paper);
-  background: rgb(0 0 0 / 82%);
-  font-size: 12px;
-  font-weight: 500;
-  pointer-events: none;
-  transform: translateX(-50%);
-}
-
-.canvas-busy .spinner {
-  width: 12px;
-  height: 12px;
-  border-color: rgb(255 255 255 / 30%);
-  border-top-color: var(--paper);
-}
-
 .workspace__controls {
   display: flex;
   width: 100%;
+  grid-row: 3;
+  align-self: start;
   justify-content: center;
 }
 
@@ -361,7 +345,7 @@ button {
   display: grid;
   width: min(100%, 560px);
   min-height: 50vh;
-  margin: 12px auto 0;
+  margin: auto;
   place-content: center;
   justify-items: center;
   gap: 10px;
@@ -383,7 +367,7 @@ button {
 /* Data bar: attached under the image like the readout strip of a micrograph. */
 
 .class-ratio {
-  width: min(100%, var(--fit-width, 640px));
+  width: min(100%, var(--view-width, 640px));
   margin: 0;
   color: var(--readout-text);
   background: var(--readout);
@@ -413,6 +397,21 @@ button {
 .class-ratio__source {
   flex: 0 0 auto;
   color: var(--readout-muted);
+}
+
+.class-ratio__busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--paper);
+  font-weight: 500;
+}
+
+.class-ratio__busy .spinner {
+  width: 12px;
+  height: 12px;
+  border-color: rgb(255 255 255 / 30%);
+  border-top-color: var(--paper);
 }
 
 .class-ratio__list {
@@ -569,8 +568,7 @@ button {
   }
 }
 
-.field-row,
-.archive-name {
+.field-row {
   display: flex;
   height: var(--control);
   min-width: 0;
@@ -584,13 +582,11 @@ button {
   font-size: 13px;
 }
 
-.field-row:focus-within,
-.archive-name:focus-within {
+.field-row:focus-within {
   border-color: var(--ink);
 }
 
-.field-row input,
-.archive-name input {
+.field-row input {
   width: 100%;
   min-width: 0;
   padding: 0;
@@ -612,6 +608,21 @@ button {
   appearance: textfield;
 }
 
+/* The ZIP name takes the room its label leaves and reads as one file name with its suffix. */
+.archive-name {
+  gap: 0;
+}
+
+.archive-name > span:first-child {
+  flex: 0 0 auto;
+  margin-right: 6px;
+}
+
+.archive-name input {
+  width: auto;
+  flex: 1;
+}
+
 .field-row input::-webkit-inner-spin-button,
 .field-row input::-webkit-outer-spin-button {
   margin: 0;
@@ -622,19 +633,14 @@ button {
   opacity: 0.4;
 }
 
-.field-row .unit,
-.archive-name__suffix {
+.field-row .unit {
   flex: 0 0 auto;
-  color: var(--slate);
-}
-
-.archive-name input:disabled {
   color: var(--slate);
 }
 
 /* One keycap for every key shown on a control or in the shortcut list. */
 .key-hint,
-.train-button kbd {
+.key-button kbd {
   display: inline-flex;
   min-width: 18px;
   height: 18px;
@@ -682,7 +688,8 @@ button {
 }
 
 .sidebar__open,
-.sidebar__train {
+.sidebar__train,
+.sidebar__help {
   display: grid;
   width: var(--control);
   height: var(--control);
@@ -697,6 +704,7 @@ button {
 }
 
 .sidebar__open:hover,
+.sidebar__help:hover,
 .sidebar__train:hover:not(:disabled, .train-button--due) {
   background: var(--wash);
 }
@@ -715,6 +723,13 @@ button {
 .sidebar__train:disabled {
   cursor: default;
   opacity: 0.4;
+}
+
+/* At the foot of the collapsed image rail, where the expanded sidebar keeps its ? button. */
+.sidebar__help {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .sidebar__upload-row {
@@ -1104,7 +1119,12 @@ button {
   font-size: 12px;
 }
 
-.train-button kbd {
+/* A full-width button with its key at the left edge, so the label stays centred. */
+.key-button {
+  position: relative;
+}
+
+.key-button kbd {
   position: absolute;
   top: 50%;
   left: 8px;
@@ -1112,9 +1132,11 @@ button {
   transform: translateY(-50%);
 }
 
-/* A keycap on an ink fill: the selected class and a Train button waiting for training. */
+/* A keycap on an ink fill: the selected class, a Train button waiting for training, and Apply once a crop
+   box is set. */
 .label-chip[aria-pressed="true"] .key-hint,
-.train-button--due:not(:disabled) kbd {
+.train-button--due:not(:disabled) kbd,
+.model-button--primary kbd {
   border-color: rgb(255 255 255 / 30%);
   color: var(--paper);
   background: rgb(255 255 255 / 12%);
@@ -1330,7 +1352,8 @@ button {
     padding: 0 12px;
   }
 
-  .sidebar--collapsed .sidebar__train {
+  .sidebar--collapsed .sidebar__train,
+  .sidebar--collapsed .sidebar__help {
     margin: 0 0 0 8px;
   }
 

@@ -101,7 +101,7 @@ const setOpacity = (view, value) => {
 
       <section class="tool-group" aria-labelledby="canvas-group">
         <h2 id="canvas-group">Canvas</h2>
-        <label class="slider-row" :title="'Hold ' + VIEW_KEYS.brush + ' and scroll over the image'">
+        <label class="slider-row" :title="'Hold ' + VIEW_KEYS.brush + ' and scroll over the image, or press [ and ]'">
           <span><span class="shortcut-keys"><kbd class="key-hint">{{ VIEW_KEYS.brush }}</kbd><span aria-hidden="true">+</span><kbd
             class="key-hint">Wheel</kbd></span>Brush</span>
           <input type="range" :min="BRUSH_SIZE.min" :max="BRUSH_SIZE.max" :step="BRUSH_SIZE.step" :value="brushSize"
@@ -109,7 +109,8 @@ const setOpacity = (view, value) => {
             @pointerup="$event.currentTarget.blur()" @pointercancel="$event.currentTarget.blur()" />
           <output>{{ brushSize }} px</output>
         </label>
-        <label class="slider-row" :title="'Hold ' + VIEW_KEYS.zoom + ' or ' + MOD_KEY + ' and scroll over the image'">
+        <label class="slider-row"
+          :title="'Hold ' + VIEW_KEYS.zoom + ' or ' + MOD_KEY + ' and scroll over the image; ' + VIEW_KEYS.fit + ' fits it'">
           <span><span class="shortcut-keys"><kbd class="key-hint">{{ VIEW_KEYS.zoom }}</kbd><span aria-hidden="true">+</span><kbd
             class="key-hint">Wheel</kbd></span>Zoom</span>
           <input type="range" :min="ZOOM.min" :max="ZOOM.max" :step="ZOOM.step" :value="zoom"
@@ -121,29 +122,33 @@ const setOpacity = (view, value) => {
 
       <section class="tool-group" aria-labelledby="image-group">
         <h2 id="image-group">Image</h2>
-        <div class="button-pair">
-          <template v-if="cropping">
-            <button class="model-button busy-button" type="button" :disabled="busy || !hasCropSelection"
-              @click="emit('apply-crop')">
-              Apply<span v-if="projectTask === 'crop'" class="spinner" aria-hidden="true"></span>
-            </button>
-            <button class="model-button" type="button" :disabled="busy" @click="emit('cancel-crop')">Cancel</button>
-          </template>
-          <template v-else>
+        <!-- While cropping, Apply and Cancel take the place of the crop buttons and Max width, so nothing moves. -->
+        <template v-if="cropping">
+          <button class="model-button busy-button key-button" :class="{ 'model-button--primary': hasCropSelection && !busy }"
+            type="button" :disabled="busy || !hasCropSelection" :title="hasCropSelection ? undefined : 'Move or resize the box first'"
+            @click="emit('apply-crop')">
+            <kbd>Enter</kbd>Apply<span v-if="projectTask === 'crop'" class="spinner" aria-hidden="true"></span>
+          </button>
+          <button class="model-button key-button" type="button" :disabled="busy" @click="emit('cancel-crop')">
+            <kbd>Esc</kbd>Cancel
+          </button>
+        </template>
+        <template v-else>
+          <div class="button-pair">
             <button class="model-button" type="button" :disabled="busy || !hasImage" @click="emit('crop')">Crop</button>
             <button class="model-button" type="button" :disabled="busy || !canResetCrop" @click="emit('reset-crop')">Reset crop</button>
-          </template>
-        </div>
-        <label class="field-row"><span>Width</span>
-          <input v-model.number="widthDraft" type="number" min="1" step="1" placeholder="Original"
-            :disabled="busy || cropping" title="Working width for every image; press Enter to apply"
-            @keydown.enter.prevent="$event.target.blur()" @change="resize" /><span class="unit">px</span>
-        </label>
+          </div>
+          <label class="field-row"><span>Max width</span>
+            <input v-model.number="widthDraft" type="number" min="1" step="1" placeholder="Original"
+              :disabled="busy" title="Wider images are scaled down to this for labeling and prediction; press Enter to apply"
+              @keydown.enter.prevent="$event.target.blur()" @change="resize" /><span class="unit">px</span>
+          </label>
+        </template>
       </section>
 
       <section class="tool-group" aria-labelledby="model-group">
         <h2 id="model-group">Model</h2>
-        <button class="model-button busy-button train-button" :class="{ 'train-button--due': needsTraining }" type="button"
+        <button class="model-button busy-button key-button" :class="{ 'train-button--due': needsTraining }" type="button"
           :disabled="trainDisabled" :title="trainTitle" @click="emit('train')">
           <kbd>Space</kbd>Train &amp; predict<span v-if="predicting" class="spinner" aria-hidden="true"></span>
         </button>
@@ -170,7 +175,7 @@ const setOpacity = (view, value) => {
       </section>
 
       <section class="tool-group" aria-labelledby="reach-group">
-        <h2 id="reach-group">Brush reaches</h2>
+        <h2 id="reach-group">Paint</h2>
         <label class="switch"
           :title="hasUnclear ? 'Brush paints only where the prediction is uncertain; the rest is shaded' : NO_PREDICTION">
           <input type="checkbox" :checked="unclearOnly && hasUnclear" :disabled="!hasUnclear"
