@@ -433,3 +433,89 @@ test('a prediction started before a model reset does not turn prediction back on
     globalThis.fetch = originalFetch; browser.restore(); resetSession()
   }
 })
+
+test('a stroke while Space is still encoding the training images does not drop the run', async () => {
+  resetSession()
+  const browser = installBrowserMocks(), originalFetch = globalThis.fetch
+  const decoding = deferred(), requests = []
+  globalThis.createImageBitmap = async () => { await decoding.promise; return { width: 10, height: 5, close: () => {} } }
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === '/api/sessions') return Response.json({ id: 'stroke-while-encoding' })
+    requests.push(JSON.parse(options.body)); return Response.json(prediction(1))
+  }
+  const image = namedBlob('sample.png'), { model } = makeModel(image)
+  try {
+    const mask = ensureLabelMask(image, 10, 5); mask.data[0] = 1; mask.labeledCount = 1
+    const running = model.apply()
+    mask.data[1] = 2; mask.labeledCount = 2; model.updateEdits()
+    decoding.resolve()
+    await running
+    assert.equal(requests.length, 1)
+    assert.notEqual(model.resultImage.value, '')
+    assert.equal(model.canDownloadResult.value, false)
+  } finally { globalThis.fetch = originalFetch; browser.restore(); resetSession() }
+})
+
+test('an edit during a run keeps its progress line moving and its error shown', async () => {
+  resetSession()
+  const browser = installBrowserMocks(), originalFetch = globalThis.fetch, originalSetInterval = globalThis.setInterval
+  const response = deferred(), started = deferred(), ticks = []
+  let state = { stage: 'features', done: 1, total: 2 }
+  globalThis.setInterval = (poll) => { ticks.push(poll); return 0 }
+  globalThis.fetch = async (url) => {
+    if (url === '/api/sessions') return Response.json({ id: 'edit-during-run' })
+    if (url === '/api/predict/status') return Response.json(state)
+    started.resolve(); return response.promise
+  }
+  const image = namedBlob('sample.png'), { model } = makeModel(image)
+  let running
+  try {
+    running = model.apply()
+    await started.promise
+    await ticks[0]()
+    const before = model.progress.value
+    model.updateEdits()
+    state = { stage: 'predicting', done: 1, total: 2 }
+    await ticks[0]()
+    assert.ok(model.progress.value > before)
+    response.resolve(Response.json({ detail: 'Image is too large.' }, { status: 422 }))
+    await running
+    assert.equal(model.error.value, 'Image is too large.')
+  } finally {
+    response.resolve(Response.json(prediction()))
+    await running
+    globalThis.setInterval = originalSetInterval
+    globalThis.fetch = originalFetch; browser.restore(); resetSession()
+  }
+})
+
+test('Space queued behind a run still runs after another stroke', async () => {
+  resetSession()
+  const browser = installBrowserMocks(), originalFetch = globalThis.fetch
+  const first = deferred(), started = deferred(), requests = []
+  globalThis.fetch = async (url, options = {}) => {
+    if (url === '/api/sessions') return Response.json({ id: 'queued-then-stroke' })
+    requests.push(JSON.parse(options.body))
+    if (requests.length === 1) { started.resolve(); return first.promise }
+    return Response.json(prediction(2))
+  }
+  const image = namedBlob('sample.png'), { model } = makeModel(image)
+  let running
+  try {
+    const mask = ensureLabelMask(image, 10, 5); mask.data[0] = 1; mask.labeledCount = 1
+    running = model.apply()
+    await started.promise
+    mask.data[1] = 2; mask.labeledCount = 2; model.updateEdits()
+    const queued = model.apply()
+    mask.data[2] = 2; mask.labeledCount = 3; model.updateEdits()
+    first.resolve(Response.json(prediction(1)))
+    await Promise.all([running, queued])
+    assert.equal(requests.length, 2)
+    assert.equal(requests[1].training[0].edits.runs.length > 0, true)
+    assert.equal(model.predicting.value, false)
+  } finally {
+    first.resolve(Response.json(prediction()))
+    await running
+    globalThis.fetch = originalFetch; browser.restore(); resetSession()
+  }
+})

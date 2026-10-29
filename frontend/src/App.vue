@@ -153,6 +153,7 @@ const predictIfOn = () => {
 }
 const restoreCrop = () => {
   if (!canResetCrop.value || cropOpen.value || exporting.value || projectBusy.value) return
+  if (hasLabels.value && !window.confirm('Resetting the crop clears the labels on the cropped image. Reset anyway?')) return
   resetCrop()
   updateEdits()
   clearResult()
@@ -199,7 +200,8 @@ const openProject = async file => {
     projectName.value = file.name
     await nextTick()
     projectDirty.value = false
-    if (loaded.enabled) await predict()
+    // The rebuild runs like any prediction, so it leaves the editor free.
+    if (loaded.enabled) void predict()
   } catch (error) { projectError.value = error.message }
   finally { projectTask.value = '' }
 }
@@ -338,10 +340,13 @@ const addFiles = async (fileList) => {
   if (exporting.value || projectBusy.value || cropOpen.value) return
   const { uniqueFiles, duplicateFiles } = filterNewImages(fileList, images.value)
   const readable = await Promise.all(uniqueFiles.map(canDecodeImage))
-  const validFiles = uniqueFiles.filter((_, index) => readable[index])
+  // Decoding takes a while: a task started meanwhile wins, and files added meanwhile are not added twice.
+  if (exporting.value || projectBusy.value || cropOpen.value) return
+  const added = filterNewImages(uniqueFiles.filter((_, index) => readable[index]), images.value)
+  const validFiles = added.uniqueFiles
   const skipped = [
     ...uniqueFiles.filter((_, index) => !readable[index]).map(file => file.name + ' (not a readable image)'),
-    ...duplicateFiles.map(file => file.name + ' (already added)'),
+    ...[...duplicateFiles, ...added.duplicateFiles].map(file => file.name + ' (already added)'),
   ]
 
   if (validFiles.length) addImages(validFiles)
@@ -351,11 +356,21 @@ const addFiles = async (fileList) => {
 const removeAt = (index) => {
   const image = images.value[index]
   if (!image) return
-  if (labeledImages.value.has(image) && !window.confirm(`Remove ${image.name} and its labels?`)) return
+  const labeled = labeledImages.value.has(image)
+  if (labeled && !window.confirm(`Remove ${image.name} and its labels?`)) return
 
+  const wasSelected = image === selectedImage.value
   removeImage(index)
   clearErrors()
-  void updateEdits()
+  // Only labels train the model, so removing an unlabeled image leaves the prediction up to date.
+  if (labeled) updateEdits()
+  if (wasSelected && selectedImage.value) followSelection()
+}
+
+// A newly selected image gets its prediction once the model is on.
+const followSelection = () => {
+  if (enabled.value || predicting.value) void predict()
+  else clearResult()
 }
 
 const clearAllImages = () => {
@@ -374,11 +389,7 @@ const selectAt = (index) => {
 
   selectImage(index)
   clearErrors()
-  if (enabled.value || predicting.value) {
-    void predict(image)
-  } else {
-    clearResult()
-  }
+  followSelection()
 }
 
 // Steps through every image; the list filter follows the selection.

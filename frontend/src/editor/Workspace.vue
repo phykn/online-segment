@@ -148,11 +148,14 @@ const clearUnclear = () => {
   if (unclearMask.value) clearLabels(allowsUnclear(props.uncertaintyMask))
 }
 
+// Reports the painter's image, not props.image: a stroke cut short by moving to another image commits
+// to the image it was painted on.
 const emitLabelState = (changed = false, committed = false) => {
-  if (!props.image) return
+  const image = labelPainter.getImage()
+  if (!image) return
   labelRevision.value += 1
   emit('label-state-change', {
-    image: props.image,
+    image,
     hasLabels: labelPainter.hasLabels(),
     changed,
     committed,

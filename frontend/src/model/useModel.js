@@ -16,7 +16,6 @@ export const useModel = ({
   const predicting = ref(false)
   let pendingPrediction = null
   let predictionRun = null
-  let predictionSequence = 0
   // Bumped when the model is reset, so a run started before a reset cannot turn prediction back on.
   let generation = 0
   // The label revision Space last trained on; pressing it again without edits reuses that training.
@@ -77,17 +76,17 @@ export const useModel = ({
     result.value = null
   }
 
+  // An edit only dates the labels; a run already started or queued still goes ahead.
   const updateRevision = () => {
     revision.value += 1
     results.clear()
-    predictionSequence += 1
-    pendingPrediction = null
   }
 
   const resetModel = () => {
     generation += 1
     enabled.value = false
     updateRevision()
+    pendingPrediction = null
     result.value = null
   }
 
@@ -107,8 +106,9 @@ export const useModel = ({
     resizeWidth.value === request.width &&
     revision.value === request.revision
 
+  // A request queued behind this run replaces its result.
   const isPredictionCurrent = (request) =>
-    request.sequence === predictionSequence &&
+    !pendingPrediction &&
     selectedImage.value === request.image &&
     isPredictionFresh(request)
 
@@ -137,14 +137,14 @@ export const useModel = ({
 
       const image = await encodeModelImage(request.image)
       const training = await makeTraining(images.value)
-      if (!isPredictionCurrent(request)) return
+      if (pendingPrediction || !isPredictionShowable(request)) return
       progress.value = 0
       const response = await predictImage(image, {
         width: request.width,
         edits: makeEdits(request.image),
         training,
       }, (state) => {
-        if (isPredictionCurrent(request)) progress.value = Math.max(progress.value, runShare(state))
+        progress.value = Math.max(progress.value, runShare(state))
       })
       // The model trained even if the user moved to another image, so keep the result for when
       // they come back; a result for an old width or old labels is not kept.
@@ -162,7 +162,7 @@ export const useModel = ({
       result.value = finished
       predictionVersion.value += 1
     } catch (err) {
-      if (isPredictionCurrent(request)) error.value = err.message
+      if (!pendingPrediction && isPredictionShowable(request)) error.value = err.message
     }
   }
 
@@ -196,7 +196,6 @@ export const useModel = ({
       image,
       width,
       revision: revision.value,
-      sequence: ++predictionSequence,
       generation,
     }
     clearError()

@@ -220,6 +220,7 @@ export const usePainter = () => {
   }
 
   const isReady = () => getCurrentMask() !== null
+  const getImage = () => currentImage
   const hasLabels = () =>
     currentImage ? hasImageLabels(currentImage) : false
 
@@ -423,6 +424,7 @@ export const usePainter = () => {
     cancelStroke,
     clear,
     commitStroke,
+    getImage,
     hasLabels,
     isReady,
     paintCurve,
