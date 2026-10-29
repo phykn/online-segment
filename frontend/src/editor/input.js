@@ -32,7 +32,7 @@ export const useCanvasInput = ({
     cursorPoint = { clientX: event.clientX, clientY: event.clientY }
     const label = getLabel()
     const color =
-      label === ERASER_LABEL ? 'var(--body)' : LABELS[label].cursorColor
+      label === ERASER_LABEL ? '#fff' : LABELS[label].cursorColor
     return viewport.updateCursor(event, color)
   }
 

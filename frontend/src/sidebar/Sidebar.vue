@@ -49,7 +49,19 @@ const fileInput = ref(null)
 const isDragging = ref(false)
 const collapsed = ref(startsCollapsed())
 // Mac shows ⌘ for the undo and redo modifier; Ctrl + wheel stays Ctrl because pinches send it.
-const mod = /Mac|iP(hone|ad)/.test(navigator.platform) ? '⌘' : 'Ctrl'
+const isMac = /Mac|iP(hone|ad)/.test(navigator.platform)
+const mod = isMac ? '⌘' : 'Ctrl'
+// Each shortcut lists alternatives (shown with /), each a combination of keys (shown with +).
+const shortcuts = [
+  { keys: [['?']], action: 'Show shortcuts' },
+  { keys: [['Drag']], action: 'Paint' },
+  { keys: [['↑'], ['↓']], action: 'Previous or next image' },
+  { keys: [['Ctrl', 'Wheel']], action: 'Zoom' },
+  { keys: [['Wheel'], ['Middle drag']], action: 'Pan when zoomed' },
+  { keys: [['+'], ['−']], action: 'Prediction opacity' },
+  { keys: [[mod, 'Z']], action: 'Undo' },
+  { keys: isMac ? [[mod, 'Shift', 'Z']] : [[mod, 'Shift', 'Z'], ['Ctrl', 'Y']], action: 'Redo' },
+]
 const version = __APP_VERSION__
 const trainedCount = computed(() => props.images.filter(image => props.labeledImages.has(image)).length)
 const filters = computed(() => [
@@ -204,14 +216,17 @@ const handleDragLeave = (event) => {
             aria-label="Close shortcuts" title="Close (Esc)">×</button>
         </div>
         <ul class="shortcut-list" aria-label="Keyboard shortcuts">
-          <li><kbd>?</kbd><span>Show shortcuts</span></li>
-          <li><kbd>Drag</kbd><span>Paint</span></li>
-          <li><kbd>↑ / ↓</kbd><span>Previous / next image</span></li>
-          <li><kbd>Ctrl + wheel</kbd><span>Zoom</span></li>
-          <li><kbd>+ / −</kbd><span>Prediction opacity</span></li>
-          <li><kbd>{{ mod }} + Z</kbd><span>Undo</span></li>
-          <li><kbd>{{ mod }} + Shift + Z</kbd><span>Redo</span></li>
-          <li><kbd>Wheel / middle drag</kbd><span>Pan when zoomed</span></li>
+          <li v-for="shortcut in shortcuts" :key="shortcut.action">
+            <span class="shortcut-keys">
+              <template v-for="(combo, choice) in shortcut.keys" :key="choice">
+                <span v-if="choice" aria-hidden="true">/</span>
+                <template v-for="(key, step) in combo" :key="key">
+                  <span v-if="step" aria-hidden="true">+</span><kbd class="key-hint">{{ key }}</kbd>
+                </template>
+              </template>
+            </span>
+            <span>{{ shortcut.action }}</span>
+          </li>
         </ul>
       </div>
     </div>

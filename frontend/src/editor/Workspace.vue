@@ -375,7 +375,7 @@ defineExpose({
         @drop.prevent="dropping = false; emit('add-files', $event.dataTransfer.files)">
         <input ref="emptyInputRef" class="visually-hidden" type="file" multiple tabindex="-1" aria-hidden="true"
           :accept="IMAGE_FILE_ACCEPT" @change="emit('add-files', $event.target.files); $event.target.value = ''" />
-        <button class="model-button" type="button" @click="emptyInputRef.click()">Add images</button>
+        <button class="model-button model-button--primary" type="button" @click="emptyInputRef.click()">Add images</button>
         <span>or drop image files here</span>
       </div>
       <div v-show="image && rendered" class="workspace__editor"
@@ -449,7 +449,7 @@ defineExpose({
           </div>
         </div>
         <div ref="controlsRef" class="workspace__controls">
-        <ClassRatio v-show="!cropping" :counts="classCounts" />
+        <ClassRatio v-show="!cropping" :counts="classCounts" :name="image?.name" :size="editorSize" />
         </div>
       </div>
       <p v-if="errorMessage" class="workspace__error" role="alert">

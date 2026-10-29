@@ -78,9 +78,10 @@ const key = (event, handle) => {
 
 <style scoped>
 .crop-overlay { position: absolute; inset: 0; z-index: 8; touch-action: none; overflow: hidden; }
-.crop-box { position: absolute; box-sizing: border-box; border: 3px solid #f28c28; background: #f28c2814; box-shadow: 0 0 0 3000px #0005; cursor: move; outline-offset: 4px; }
-.crop-size { position: absolute; top: 8px; left: 8px; padding: 4px 7px; border-radius: 4px; background: #9a440d; color: white; font-size: 12px; white-space: nowrap; pointer-events: none; }
-.crop-handle { position: absolute; width: 14px; height: 14px; padding: 0; border: 2px solid white; border-radius: 3px; background: #f28c28; transform: translate(-50%, -50%); }
+.crop-box { position: absolute; box-sizing: border-box; border: 2px solid #fff; box-shadow: 0 0 0 1px #0009, 0 0 0 3000px #0007; cursor: move; outline-offset: 4px; }
+.crop-box:focus-visible { outline: 2px solid #fff; }
+.crop-size { position: absolute; top: 8px; left: 8px; padding: 3px 7px; border-radius: 4px; background: #000; color: #fff; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.crop-handle { position: absolute; width: 12px; height: 12px; padding: 0; border: 1.5px solid #1d2125; border-radius: 2px; background: #fff; transform: translate(-50%, -50%); }
 .crop-handle--nw { left: 0; top: 0; cursor: nwse-resize; }
 .crop-handle--n { left: 50%; top: 0; cursor: ns-resize; }
 .crop-handle--ne { left: 100%; top: 0; cursor: nesw-resize; }
