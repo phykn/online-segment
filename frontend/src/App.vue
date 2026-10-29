@@ -147,9 +147,11 @@ const applyCrop = async rect => {
   finally { projectTask.value = '' }
 }
 const cancelCrop = () => { cropOpen.value = false }
-// Like picking another image, a cropped or restored image gets its prediction once the model is on.
+// Picking, cropping or restoring an image predicts it once the model is on, while the labels still hold two
+// classes; with fewer, the backend would return an empty prediction.
+const predictsOnChange = () => (enabled.value || predicting.value) && canTrain.value
 const predictIfOn = () => {
-  if (enabled.value || predicting.value) void predict()
+  if (predictsOnChange()) void predict()
 }
 const restoreCrop = () => {
   if (!canResetCrop.value || cropOpen.value || exporting.value || projectBusy.value) return
@@ -201,7 +203,7 @@ const openProject = async file => {
     await nextTick()
     projectDirty.value = false
     // The rebuild runs like any prediction, so it leaves the editor free.
-    if (loaded.enabled) void predict()
+    if (loaded.enabled && canTrain.value) void predict()
   } catch (error) { projectError.value = error.message }
   finally { projectTask.value = '' }
 }
@@ -367,9 +369,8 @@ const removeAt = (index) => {
   if (wasSelected && selectedImage.value) followSelection()
 }
 
-// A newly selected image gets its prediction once the model is on.
 const followSelection = () => {
-  if (enabled.value || predicting.value) void predict()
+  if (predictsOnChange()) void predict()
   else clearResult()
 }
 
