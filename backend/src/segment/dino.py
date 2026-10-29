@@ -62,21 +62,31 @@ class Level:
 class Pyramid:
     levels: list
     shape: tuple
-    pcas: list | None = None
+    field: np.ndarray | None = None  # (pixels, dims) projected tokens, filled by project
 
     @property
     def nbytes(self):
-        return sum(level.grid.nbytes for level in self.levels)
+        return self.field.nbytes if self.field is not None else sum(level.grid.nbytes for level in self.levels)
 
     def sample(self, limit):
         return [level.sample(limit) for level in self.levels]
 
     def project(self, pcas):
-        return Pyramid(self.levels, self.shape, pcas)
+        # PCA and bilinear interpolation are both linear (weights sum to 1), so projecting each
+        # token grid first equals interpolating all 768 dims. Every brush edit refits the trees
+        # and predicts every pixel again, so the interpolated field is built once per image.
+        levels = [Level(pca.transform(level.grid.reshape(-1, level.grid.shape[-1]).astype(np.float32))
+                        .reshape(*level.grid.shape[:2], -1).astype(np.float32), level.scale)
+                  for level, pca in zip(self.levels, pcas, strict=True)]
+        size = self.shape[0]*self.shape[1]
+        field = np.empty((size, sum(level.grid.shape[-1] for level in levels)), np.float32)
+        for start in range(0, size, 1 << 20):
+            idx = np.arange(start, min(size, start + (1 << 20)))
+            field[idx] = np.concatenate([level.pixels(idx, self.shape[1]) for level in levels], axis=1)
+        return Pyramid(levels, self.shape, field)
 
     def pixels(self, indices):
-        return np.concatenate([pca.transform(level.pixels(indices, self.shape[1])).astype(np.float32)
-                               for level, pca in zip(self.levels, self.pcas, strict=True)], axis=1)
+        return self.field[indices]
 
 
 class DinoEncoder:

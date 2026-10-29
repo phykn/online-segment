@@ -205,7 +205,18 @@ With DINO PCA32 + 4 pixel channels fixed and the v1 truth, ExtraTrees (same sett
 
 Particle and pore IoU also rose with strokes (30 strokes: 0.897/0.790 → 0.940/0.857). Logistic regression, ridge, MLP and HistGradientBoosting were all worse than both tree ensembles: brush strokes yield only a few hundred spatially sampled pixels per class. Intermediate DINO layers (8, 5) and a 4-way sub-token shift ensemble were also tried; layers lowered crack F1 and the shift ensemble added under 0.03 for four times the encoding cost.
 
-Timing on an Apple M-series GPU (MPS), sample1 at width 768: first prediction including model load 11.9 s, label edit with cached tokens 1.6 s.
+Timing on an Apple M-series GPU (MPS), sample1 at width 768: first prediction including model load 11.9 s.
+
+A label edit refits the trees and predicts every pixel again with the image's tokens cached. It used to interpolate all 768 token dims at every pixel and then apply the PCA, which took most of the edit. Both steps are linear, so each token grid is now projected first and the 24-dim field is interpolated once per image, then reused by every edit. The features are unchanged up to float rounding, and so are the answer-key scores. One `/predict` call with training, at width 768 on an Apple M-series CPU:
+
+| Image (working size) | Edit before | Edit after | First call before | First call after |
+|---|---:|---:|---:|---:|
+| sample1 (768 × 279) | 1.56 s | 0.22 s | — | 0.82 s |
+| sample2 (690 × 226) | 1.18 s | 0.19 s | 1.68 s | 0.70 s |
+| sample3 (750 × 748) | 4.39 s | 0.42 s | 5.00 s | 1.37 s |
+| sample4 (768 × 765) | 4.69 s | 0.44 s | 5.30 s | 1.49 s |
+
+First calls exclude the DINO encoding, which ran from a cache. What remains of an edit is mostly tree prediction (about 0.26 s for 200 trees on sample4's 590 000 pixels) and the tree fit (about 0.1 s). The same trees evaluated with PyTorch were slower on MPS (0.9 s) and on CPU (2.0 s), so scikit-learn still predicts them when CUDA is missing.
 
 ## Limits
 

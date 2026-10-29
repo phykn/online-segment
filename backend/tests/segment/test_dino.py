@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from fastapi import HTTPException
 from pydantic import ValidationError
+from sklearn.decomposition import PCA
 from src.config import config, DinoConfig
 from src.segment.dino import DinoEncoder, Level, Pyramid, PATCH, channels
 from src.segment.feature import image_features, size_features
@@ -76,6 +77,15 @@ class DinoTests(unittest.TestCase):
         values = pyramid.project([Half(), Half()]).pixels(np.arange(5))
         self.assertEqual(values.shape, (5, 6))
         self.assertEqual(pyramid.nbytes, 2*grid.nbytes)
+
+    def test_projecting_tokens_before_interpolation_matches_interpolating_first(self):
+        rng = np.random.default_rng(0)
+        levels = [Level(rng.normal(size=(3, 4, 32)).astype(np.float16), (1., 1.)),
+                  Level(rng.normal(size=(5, 7, 32)).astype(np.float16), (2., 2.))]
+        pcas = [PCA(4).fit(level.grid.reshape(-1, 32).astype(np.float32)) for level in levels]
+        idx = np.arange(40*56)
+        expected = np.concatenate([pca.transform(level.pixels(idx, 56)) for level, pca in zip(levels, pcas)], axis=1)
+        np.testing.assert_allclose(Pyramid(levels, (40, 56)).project(pcas).pixels(idx), expected, atol=1e-5)
 
     def test_enhanced_channels_keep_gray_first(self):
         image = (ramp(32, 32)*255).astype(np.uint8)
