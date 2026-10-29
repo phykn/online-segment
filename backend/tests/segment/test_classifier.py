@@ -10,7 +10,7 @@ from src.config import config, CellposeParameters
 from src.api.model import predict as api_predict, proposals
 from src.api.schema import Mask, PredRequest, TrainingImage, ProposalRequest
 from src.data.mask import decode, encode
-from src.segment.classifier import Classifier
+from src.segment.classifier import Classifier, rebalance, refine
 from src.segment.model import Segmenter
 from src.segment.flow import Endpoints
 from src.segment.prediction import infer, predict
@@ -42,7 +42,7 @@ class ClassifierTests(unittest.TestCase):
         context = patch.object(config.feature, 'cellpose', 'none'); context.start()
         self.addCleanup(context.stop)
 
-    def test_half_the_trees_use_only_leading_image_channels(self):
+    def test_a_quarter_of_the_trees_use_only_leading_image_channels(self):
         rng = np.random.default_rng(0)
         y = np.repeat([0, 1, 2], 60).astype(np.int8)
         x = np.concatenate([y[:, None] + rng.normal(0, .1, (180, 2)), rng.normal(size=(180, 6))], 1).astype(np.float32)
@@ -51,17 +51,17 @@ class ClassifierTests(unittest.TestCase):
         classifier.fit([(x, y)], local=2)
         trees = classifier.model.estimators_
         self.assertEqual(len(trees), 200)
-        self.assertFalse((used(trees[100:]) >= 2).any())
-        self.assertTrue((used(trees[:100]) >= 2).any())
+        self.assertFalse((used(trees[150:]) >= 2).any())
+        self.assertTrue((used(trees[:150]) >= 2).any())
         np.testing.assert_array_equal(classifier.model.predict(x), y)
         # With size channels in columns 2-3, token trees never see them and the size half (best
         # split thresholds, not random ones) never sees the tokens after them.
         classifier.fit([(x, y)], local=2, size=2)
         trees = classifier.model.estimators_
         self.assertEqual(len(trees), 200)
-        self.assertFalse(np.isin(used(trees[:100]), [2, 3]).any())
-        self.assertTrue((used(trees[:100]) >= 4).any())
-        self.assertFalse((used(trees[100:]) >= 4).any())
+        self.assertFalse(np.isin(used(trees[:150]), [2, 3]).any())
+        self.assertTrue((used(trees[:150]) >= 4).any())
+        self.assertFalse((used(trees[150:]) >= 4).any())
         self.assertEqual({type(tree).__name__ for tree in trees}, {'ExtraTreeClassifier', 'DecisionTreeClassifier'})
         np.testing.assert_array_equal(classifier.model.predict(x), y)
         classifier.fit([(x, y)])
@@ -105,6 +105,25 @@ class ClassifierTests(unittest.TestCase):
         response = api_predict(payload, session)
         self.assertTrue((decode(response.mask) == -1).all())
         self.assertEqual(segmenter.training, {})
+
+    def test_rebalance_shrinks_a_class_the_image_rarely_shows(self):
+        probs = np.array([[.5, .5], [.9, .1], [.9, .1], [.9, .1]], np.float32)
+        out = rebalance(probs)
+        self.assertEqual(out[0].argmax(), 0)
+        self.assertLess(out[0, 1], .5)
+        np.testing.assert_allclose(out.sum(1), 1, rtol=1e-6)
+        even = np.array([[.6, .4], [.4, .6]], np.float32)
+        np.testing.assert_allclose(rebalance(even), even, rtol=1e-6)
+
+    def test_refine_moves_a_blurred_class_edge_onto_the_brightness_edge(self):
+        gray = np.zeros((16, 16), np.float32); gray[:, 8:] = 1
+        ramp = np.clip((np.arange(16)-4.5)/8, 0, 1).astype(np.float32)
+        p = np.broadcast_to(ramp, (16, 16))
+        probs = np.stack([1-p, p], -1).reshape(-1, 2)
+        out = refine(probs, gray).reshape(16, 16, 2)[..., 1]
+        self.assertGreater(out[8, 8]-out[8, 7], p[8, 8]-p[8, 7])
+        self.assertLess(out[8, 7], .5)
+        self.assertGreater(out[8, 8], .5)
 
     def test_export_reuses_forest_and_matches_preview(self):
         image, edits = fixture(); segmenter = Segmenter()

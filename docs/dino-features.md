@@ -22,7 +22,7 @@ At scales 4 and above a 512 px tile shows a small, nearly uniform patch of the o
 
 ### Image-only trees
 
-With few labels, 24 DINO dims gave the trees many noisy splits, and DINO features scored below the image-only RF. Half of the 200 trees are now grown on the image channels alone (the token columns are zeroed, and constant columns are never split on) and merged into one forest, so prediction costs the same. Averaging the two halves never fell below the image-only RF on average and kept DINO's gain with more labels. The FSSDINO class prototypes and Gram maps were tried as RF channels and dropped: with 10 clicks per class they collapsed (crack F1 ≈ 0.05), and with dense labels they leaked training labels into features.
+With few labels, 24 DINO dims gave the trees many noisy splits, and DINO features scored below the image-only RF. Part of the 200 trees are now grown on the image channels alone (the token columns are zeroed, and constant columns are never split on) and merged into one forest, so prediction costs the same. Averaging the two halves never fell below the image-only RF on average and kept DINO's gain with more labels; since the answer keys (below) the split is 150 token trees to 50 image-only trees. The FSSDINO class prototypes and Gram maps were tried as RF channels and dropped: with 10 clicks per class they collapsed (crack F1 ≈ 0.05), and with dense labels they leaked training labels into features.
 
 ### Size channels
 
@@ -30,7 +30,7 @@ On `frontend/asset/sample3.png`, large particles among many small grains, labels
 
 Seven size channels describe what fits inside a structure instead of its edges. Each is a grayscale opening of the luminance, smoothed with σ = `base`, by a disk of radius `round(base·2^(1+i/2))`, i = 0…6, where `base = clip(min(H, W)/512, 0.5, 8)` (radii 3–23 px on sample3). Where a disk fits inside a bright structure, its pixels keep about their own brightness out to the rim; smaller structures drop to their surroundings. A large particle's rim thus keeps its particle's size channels, while a small grain loses the wide ones. The count stays 7 at every image size, so features of differently sized images stack. They take 0.2 s at 768 px.
 
-The image-only half of the forest now grows on the image and size channels; the other half keeps the image channels and DINO tokens (with `feature.kind: image`, the image channels alone). Size channels in the token trees lowered the sample1 four-class mIoU by 0.006–0.017. The size half is a RandomForest with best-split thresholds (`max_features=0.3`, no bootstrap) rather than ExtraTrees: one best cut between the labelled sizes keeps rims with their particle, whereas random cuts left mixed nodes that the edge channels finished, and there a large particle's rim again looked like a small grain. At the app's limit of 10 000 labelled pixels per class it fits in 0.5–0.7 s, against 0.1 s for the ExtraTrees half.
+The image-only trees now grow on the image and size channels; the token trees keep the image channels and DINO tokens (with `feature.kind: image`, the image channels alone). Size channels in the token trees lowered the sample1 four-class mIoU by 0.006–0.017. The size trees are a RandomForest with best-split thresholds (`max_features=0.3`, no bootstrap) rather than ExtraTrees: one best cut between the labelled sizes keeps rims with their particle, whereas random cuts left mixed nodes that the edge channels finished, and there a large particle's rim again looked like a small grain. At the app's limit of 10 000 labelled pixels per class it fits in 0.5–0.7 s, against 0.1 s for the ExtraTrees.
 
 Rejected:
 
@@ -38,6 +38,32 @@ Rejected:
 - Opening-by-reconstruction profiles: they leaked along bright paths between touching particles.
 - Top-hats, closings, openings of a σ = 3 image, and dividing each opening by the fraction that survives it.
 - Bootstrapped size trees with √n features per split fit 3× faster but left more rim errors (sample3 rim error 0.10 vs 0.06, mIoU 0.939 vs 0.949). Capping their training pixels per class lowered sample1 with dense labels (mIoU 0.780 → 0.770 at 2 000 per class).
+
+### Answer keys: rare classes and blurred edges
+
+2026-10-29. `eval/evaluate_keys.py` scores the hand-checked answer keys `frontend/asset/sampleN_mask.png` (table below) at the app's default width of 768: left half labelled with 10 or 30 clicks or strokes per class, right half scored, mean of the four settings.
+
+Two errors dominated. Crack was over-predicted: on sample1 the RF called about twice as many particle pixels crack as there are true crack pixels. Balanced class weights train every class as equally common, while crack covers 5–6 % of the image. And 57–92 % of all errors lay within 2 px of a class edge, because tokens are interpolated and blur class edges over a few pixels. Three changes, all at prediction:
+
+- **Rebalance.** Class probabilities are multiplied by the square root of each class's share in the image's own prediction (relative to an even share) and renormalised: halfway, in log space, to the image's class mix. The full prior correction (EM, Saerens et al. 2002) erased cracks entirely and lowered sample3, where the classes are already even.
+- **Refine.** A guided filter (radius 2 px, ε = 1e-4) of each class probability with the luminance channel as guide moves class edges onto brightness edges, so thin cracks stay thin and bright particle rims stay particle.
+- **Tree split.** 150 token trees and 50 image/size trees instead of 100 and 100.
+
+| Seed | Features | Sample 1 | 2 | 3 | 4 | Mean | Crack IoU 1 / 4 | Crack F1 (2 px) 1 / 4 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| 0 | DINO (before) | 0.638 | 0.592 | 0.719 | 0.616 | 0.641 | 0.310 / 0.421 | 0.742 / 0.778 |
+| | DINO (now) | 0.665 | 0.613 | 0.733 | 0.677 | 0.672 | 0.321 / 0.507 | 0.747 / 0.836 |
+| 1 | DINO (before) | 0.622 | 0.597 | 0.719 | 0.619 | 0.639 | 0.280 / 0.408 | 0.710 / 0.768 |
+| | DINO (now) | 0.640 | 0.631 | 0.728 | 0.700 | 0.675 | 0.266 / 0.514 | 0.685 / 0.850 |
+
+Each change alone, seed 0 (mean mIoU): rebalance 0.655, refine 0.661, both 0.664, all three 0.672. Radius 1 or 3 and power 0.35 or 0.7 moved the mean by at most 0.004. The image-only RF gains too (0.627 → 0.650 and 0.622 → 0.648). The extra work is a few box filters over the probability map; prediction time did not change measurably. Sample2 has only 533 crack pixels, so its crack scores stay near zero either way.
+
+![Answer key and prediction before and after on the right halves of sample1 and sample4, 30 clicks](answer-key-before-after.jpg)
+Right halves, 30 clicks per class. Before, crack filled the gaps of sample1's grain clusters and sample4 had round pore blobs inside its sections; after, both are gone and sample4's bright rims stay particle.
+
+On the older automatic truths the same changes score lower: sample1 truth v2 (native width, 30 labels) 0.745 → 0.711 with clicks and 0.695 → 0.645 with strokes, mostly fewer crack pixels, as v2 draws cracks wider than the answer key; sample3 size truth 0.955 → 0.925 (seed 0), from the tree split (0.017) and the guided filter (0.010), whose edges follow its Otsu foreground rather than the 1 px pore lines of the answer key. The answer keys are the reference now.
+
+Tried without gain on the answer keys: auto-context with smoothed first-pass probabilities as features (mean 0.583: the probabilities at labelled pixels are overfit), DINO scales `[1, 2, 4, 8]` or `[4, 8]` (±0.005), 16 PCA dims, deeper trees, and dropping the size channels (same mean; it removes round pore blobs inside sample4's sections but lowers sample3). Self-training on confident pixels (probability ≥ 0.9, up to 2 000 per class) added another 0.006–0.013 but doubles the fit time on every label edit, so it is not used.
 
 ## Configuration
 
@@ -122,7 +148,7 @@ Rejected:
 - The same log z-score on the DINO input added nothing.
 - A σ = 0.7 Gaussian before the image channels raised the noise case by 0.06 but cost 0.008 in-domain; it is not the default.
 
-Tried without gain: more labelled pixels per class, deeper trees, other class weights, auto-context, guided filtering of probabilities, k-means cluster similarities instead of PCA, and scales 1 or 12.
+Tried without gain: more labelled pixels per class, deeper trees, other class weights, auto-context, guided filtering of probabilities (on truth v2; it helps on the answer keys, below), k-means cluster similarities instead of PCA, and scales 1 or 12.
 
 On the earlier three-class truth (v1, few dark cracks only), the PCA8 + image channel variant was worse with strokes (crack F1 0.70 → 0.19). That truth missed most faint cracks, so v2 is the reference; this disagreement is the main reason to check results on your own images.
 

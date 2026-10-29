@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier
 from src.segment.cuda_forest import make_predictor
@@ -37,16 +38,16 @@ class Classifier:
             y = np.concatenate([y for _, y in selected])
             if 0 < local < x.shape[1]:
                 # Columns: `local` pixel-exact image channels, `size` size channels, then encoder
-                # tokens or context. Half the trees see the image channels with the tokens, half
-                # with the size channels (other columns are zeroed; constant columns are never split
-                # on). Averaging keeps a few strokes from fitting token noise, and size channels in
-                # the token trees lowered particle/pore/crack/binder scores.
+                # tokens or context. Three quarters of the trees see the image channels with the
+                # tokens, a quarter with the size channels (other columns are zeroed; constant
+                # columns are never split on). The image-only quarter keeps a few strokes from
+                # fitting token noise, and size channels in the token trees lowered scores.
                 tokens = x.copy()
                 tokens[:, local:local+size] = 0
                 shape = x.copy()
                 shape[:, local+size:] = 0
-                model = forest(100).fit(tokens, y)
-                model.estimators_ += (shapes if size else forest)(100).fit(shape, y).estimators_
+                model = forest(150).fit(tokens, y)
+                model.estimators_ += (shapes if size else forest)(50).fit(shape, y).estimators_
                 model.n_estimators = len(model.estimators_)
             else:
                 model = forest(200).fit(x, y)
@@ -58,14 +59,48 @@ class Classifier:
         labels = np.full(size, -1, np.int8)
         unclear = np.ones(size, np.int8)
         if self.model is not None:
+            probs = np.empty((size, len(self.model.classes_)), np.float32)
             for start in range(0, size, 65536):
                 end = min(size, start+65536)
                 progress(stage='predicting', done=start, total=size)
                 values = features.pixels(np.arange(start, end))
-                probs = self.cuda.predict_proba(values) if self.cuda is not None else None
-                if probs is None:
+                chunk = self.cuda.predict_proba(values) if self.cuda is not None else None
+                if chunk is None:
                     self.cuda = None
-                    probs = self.model.predict_proba(values)
-                labels[start:end] = self.model.classes_[probs.argmax(axis=1)]
-                unclear[start:end] = probs.max(axis=1) < .7
+                    chunk = self.model.predict_proba(values)
+                probs[start:end] = chunk
+            local = getattr(features, 'local', None)
+            if local is not None:
+                probs = refine(probs, local[..., 0])
+            probs = rebalance(probs)
+            labels = self.model.classes_[probs.argmax(axis=1)].astype(np.int8)
+            unclear = (probs.max(axis=1) < .7).astype(np.int8)
         return labels.reshape(features.shape), unclear.reshape(features.shape)
+
+
+def refine(probs, gray, radius=2, eps=1e-4):
+    """Guided filter of class probabilities by the luminance: tokens are interpolated, so class
+    edges blur over a few pixels; the filter snaps them to brightness edges, which keeps thin
+    cracks thin and particle rims whole."""
+    window = (2*radius+1, 2*radius+1)
+    box = lambda value: cv2.boxFilter(value, -1, window)
+    gray = gray.astype(np.float32)
+    mean = box(gray)
+    variance = box(gray*gray) - mean*mean
+    out = np.empty_like(probs)
+    for c in range(probs.shape[1]):
+        p = np.ascontiguousarray(probs[:, c].reshape(gray.shape))
+        p_mean = box(p)
+        a = (box(gray*p) - mean*p_mean) / (variance+eps)
+        b = p_mean - a*mean
+        out[:, c] = (box(a)*gray + box(b)).ravel()
+    out = np.maximum(out, 1e-4)
+    return out / out.sum(axis=1, keepdims=True)
+
+
+def rebalance(probs, power=.5):
+    """Balanced class weights train every class as equally common, so a rare class such as crack
+    is over-predicted. Move halfway (in log space) to the class shares the image itself predicts."""
+    shares = probs.mean(axis=0) * probs.shape[1]
+    out = probs * shares**power
+    return out / out.sum(axis=1, keepdims=True)
