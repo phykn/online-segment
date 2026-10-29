@@ -454,7 +454,8 @@ defineExpose({
           </div>
         </div>
         <div ref="controlsRef" class="workspace__controls">
-        <ClassRatio v-show="!cropping" :counts="classCounts" :name="image?.name" :size="editorSize" />
+        <ClassRatio v-show="!cropping" :counts="classCounts" :source="resultMask ? 'Prediction' : 'Labels'"
+          :name="image?.name" :size="editorSize" />
         </div>
       </div>
       <p v-if="errorMessage" class="workspace__error" role="alert">

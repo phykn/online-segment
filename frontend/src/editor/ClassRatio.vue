@@ -6,6 +6,8 @@ import { classRatios } from './ratios.js'
 
 const props = defineProps({
   counts: { type: Array, default: null },
+  // What the shares measure: 'Prediction' or 'Labels'.
+  source: { type: String, default: '' },
   name: { type: String, default: '' },
   size: { type: Object, default: null },
 })
@@ -15,7 +17,8 @@ const percent = share => (share * 100).toFixed(VIEW.ratioDigits) + '%'
 </script>
 
 <template>
-  <!-- A micrograph-style data bar under the image: class shares, then the image name and working size. -->
+  <!-- A micrograph-style data bar under the image: what the shares measure, the class shares, then the
+       image name and working size. -->
   <figure class="class-ratio" aria-label="Pixel share by class">
     <div class="class-ratio__bar">
       <span
@@ -26,6 +29,7 @@ const percent = share => (share * 100).toFixed(VIEW.ratioDigits) + '%'
       ></span>
     </div>
     <figcaption class="class-ratio__caption">
+      <span v-if="source && ratios.length" class="class-ratio__source">{{ source }}</span>
       <ul class="class-ratio__list">
         <li v-for="{ label, share } in ratios" :key="label.value" :title="label.name">
           <span class="label-chip__dot" :style="{ backgroundColor: label.color }" aria-hidden="true"></span>

@@ -1,7 +1,8 @@
 <script setup>
 import { computed, ref } from 'vue'
 
-import { VIEW_KEYS } from '../../config.js'
+import { ERASER_KEY, LABELS, VIEW_KEYS } from '../../config.js'
+import { MOD_KEY } from '../editor/keys.js'
 import { IMAGE_FILE_ACCEPT } from '../images/files'
 import { startsCollapsed } from './collapse.js'
 import ImageList from './ImageList.vue'
@@ -49,21 +50,31 @@ const emit = defineEmits([
 const fileInput = ref(null)
 const isDragging = ref(false)
 const collapsed = ref(startsCollapsed())
-// Mac shows ⌘ for the undo and redo modifier; Ctrl + wheel stays Ctrl because pinches send it.
-const isMac = /Mac|iP(hone|ad)/.test(navigator.platform)
-const mod = isMac ? '⌘' : 'Ctrl'
-// Each shortcut lists alternatives (shown with /), each a combination of keys (shown with +).
-// Keys a control already shows in full (labels, eraser, Space, view switches) are left out.
-const shortcuts = [
-  { keys: [['Drag']], action: 'Paint' },
-  { keys: [[VIEW_KEYS.brush, 'Wheel']], action: 'Brush size' },
-  { keys: [[VIEW_KEYS.zoom, 'Wheel'], ['Ctrl', 'Wheel']], action: 'Zoom' },
-  { keys: [['Wheel'], ['Middle drag']], action: 'Pan when zoomed' },
-  { keys: [['+'], ['−']], action: 'Prediction opacity' },
-  { keys: [['↑'], ['↓']], action: 'Previous or next image' },
-  { keys: [[mod, 'Z']], action: 'Undo' },
-  { keys: isMac ? [[mod, 'Shift', 'Z']] : [[mod, 'Shift', 'Z'], ['Ctrl', 'Y']], action: 'Redo' },
-  { keys: [['?']], action: 'Show shortcuts' },
+// Every shortcut, grouped as painting, the model and its view, then moving around. Each lists
+// alternatives (shown with /), each a combination of keys (shown with +).
+const shortcutGroups = [
+  [
+    { keys: [[LABELS[0].key + '–' + LABELS.at(-1).key]], action: 'Pick a class' },
+    { keys: [[ERASER_KEY]], action: 'Eraser' },
+    { keys: [['Drag']], action: 'Paint' },
+    { keys: [[VIEW_KEYS.brush, 'Wheel']], action: 'Brush size' },
+    { keys: [[VIEW_KEYS.unclear]], action: 'Turn Uncertain only on or off' },
+    { keys: [[MOD_KEY, 'Z']], action: 'Undo' },
+    { keys: MOD_KEY === 'Ctrl' ? [['Ctrl', 'Shift', 'Z'], ['Ctrl', 'Y']] : [[MOD_KEY, 'Shift', 'Z']], action: 'Redo' },
+  ],
+  [
+    { keys: [['Space']], action: 'Train & predict' },
+    { keys: [[VIEW_KEYS.edits]], action: 'Show or hide labels' },
+    { keys: [[VIEW_KEYS.prediction]], action: 'Show or hide prediction' },
+    { keys: [['+'], ['-']], action: 'Prediction opacity' },
+  ],
+  [
+    { keys: [['↑'], ['↓']], action: 'Previous or next image' },
+    { keys: [[VIEW_KEYS.zoom, 'Wheel'], [MOD_KEY, 'Wheel']], action: 'Zoom' },
+    { keys: [['Wheel'], ['Middle drag']], action: 'Pan when zoomed' },
+    { keys: [['Enter'], ['Esc']], action: 'Apply or cancel a crop' },
+    { keys: [['?']], action: 'Show shortcuts' },
+  ],
 ]
 const version = __APP_VERSION__
 const trainedCount = computed(() => props.images.filter(image => props.labeledImages.has(image)).length)
@@ -212,26 +223,27 @@ const handleDragLeave = (event) => {
         <button class="help-button" type="button" popovertarget="shortcut-help" aria-label="Keyboard shortcuts"
           title="Keyboard shortcuts">?</button>
       </div>
-      <div id="shortcut-help" class="shortcut-help" popover>
-        <div class="shortcut-help__header">
-          <h2>Shortcuts</h2>
-          <button class="shortcut-help__close" type="button" popovertarget="shortcut-help" popovertargetaction="hide"
-            aria-label="Close shortcuts" title="Close (Esc)">×</button>
-        </div>
-        <ul class="shortcut-list" aria-label="Keyboard shortcuts">
-          <li v-for="shortcut in shortcuts" :key="shortcut.action">
-            <span>{{ shortcut.action }}</span>
-            <span class="shortcut-keys">
-              <template v-for="(combo, choice) in shortcut.keys" :key="choice">
-                <span v-if="choice" aria-hidden="true">/</span>
-                <template v-for="(key, step) in combo" :key="key">
-                  <span v-if="step" aria-hidden="true">+</span><kbd class="key-hint">{{ key }}</kbd>
-                </template>
-              </template>
-            </span>
-          </li>
-        </ul>
+    </div>
+    <!-- Outside the collapsible part, so ? opens it while the sidebar is collapsed too. -->
+    <div id="shortcut-help" class="shortcut-help" popover aria-labelledby="shortcut-help-title">
+      <div class="shortcut-help__header">
+        <h2 id="shortcut-help-title">Shortcuts</h2>
+        <button class="shortcut-help__close" type="button" popovertarget="shortcut-help" popovertargetaction="hide"
+          aria-label="Close shortcuts" title="Close (Esc)">×</button>
       </div>
+      <ul v-for="(group, index) in shortcutGroups" :key="index" class="shortcut-list">
+        <li v-for="shortcut in group" :key="shortcut.action">
+          <span>{{ shortcut.action }}</span>
+          <span class="shortcut-keys">
+            <template v-for="(combo, choice) in shortcut.keys" :key="choice">
+              <span v-if="choice" aria-hidden="true">/</span>
+              <template v-for="(key, step) in combo" :key="key">
+                <span v-if="step" aria-hidden="true">+</span><kbd class="key-hint">{{ key }}</kbd>
+              </template>
+            </template>
+          </span>
+        </li>
+      </ul>
     </div>
   </aside>
 </template>

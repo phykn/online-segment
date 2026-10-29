@@ -19,6 +19,7 @@ test('maps label, eraser, and apply shortcuts', () => {
   assert.deepEqual(keyAction('KeyT'), { name: 'eraser' })
   assert.deepEqual(keyAction('Space'), { name: 'apply' })
   assert.deepEqual(keyAction('Equal', '+'), { name: 'opacity-up' })
+  assert.deepEqual(keyAction('Equal', '='), { name: 'opacity-up' })
   assert.deepEqual(keyAction('Minus', '-'), { name: 'opacity-down' })
   assert.deepEqual(keyAction('NumpadAdd', '+'), { name: 'opacity-up' })
   assert.deepEqual(keyAction('NumpadSubtract', '-'), { name: 'opacity-down' })
@@ -63,6 +64,7 @@ test('uses B and Z as wheel modes', () => {
   assert.equal(setWheelKey('AltLeft', true), false)
   clearWheelKeys()
   assert.equal(wheelAction({ ctrlKey: true }), 'zoom')
+  assert.equal(wheelAction({ metaKey: true }), 'zoom')
   assert.equal(wheelAction({ ctrlKey: false }), null)
 })
 

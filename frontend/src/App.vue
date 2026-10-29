@@ -120,6 +120,8 @@ const labelRevision = ref(0)
 const canTrain = computed(() => labelRevision.value >= 0
   && labeledClasses(images.value.filter(image => labeledImages.value.has(image))).size >= 2)
 const needsTraining = computed(() => hasLabels.value && !canDownloadResult.value && !predicting.value)
+// The shown prediction already reflects every label, so Train & predict has nothing to do.
+const upToDate = computed(() => canDownloadResult.value && !predicting.value)
 const canClearUnclear = computed(() => !!workspaceRef.value?.hasUnclearLabels
   && !exporting.value && !projectBusy.value && !cropOpen.value)
 
@@ -142,10 +144,15 @@ const applyCrop = async rect => {
     clearResult()
     cropOpen.value = false
     projectDirty.value = true
+    predictIfOn()
   } catch (error) { projectError.value = error.message }
   finally { projectTask.value = '' }
 }
 const cancelCrop = () => { cropOpen.value = false }
+// Like picking another image, a cropped or restored image gets its prediction once the model is on.
+const predictIfOn = () => {
+  if (enabled.value || predicting.value) void predict()
+}
 const restoreCrop = () => {
   if (!canResetCrop.value || cropOpen.value || exporting.value || projectBusy.value) return
   resetCrop()
@@ -153,6 +160,7 @@ const restoreCrop = () => {
   clearResult()
   clearErrors()
   projectDirty.value = true
+  predictIfOn()
 }
 
 watch([() => images.value.slice(), resizeWidth], () => { projectDirty.value = true }, { deep: true })
@@ -264,7 +272,7 @@ const handleShortcut = (event) => {
 }
 
 const train = () => {
-  if (projectBusy.value || cropOpen.value || !canTrain.value) return
+  if (projectBusy.value || cropOpen.value || !canTrain.value || upToDate.value) return
   projectError.value = ''
   void apply()
 }
@@ -272,6 +280,8 @@ const train = () => {
 const adjustOpacity = (amount) => {
   const next = Math.round((predictionOpacity.value + amount) * 100) / 100
   predictionOpacity.value = Math.min(OPACITY.max, Math.max(OPACITY.min, next))
+  // As with the slider, changing a hidden prediction's opacity shows it.
+  if (resultImage.value) predictionVisible.value = true
 }
 
 const restoreEditorFocus = (event) => {
@@ -469,6 +479,7 @@ const handleLabelState = (state) => {
       :predicting="predicting"
       :needs-training="needsTraining"
       :can-train="canTrain"
+      :up-to-date="upToDate"
       :model-error="modelError"
       :project-error="projectError"
       @resize="resizeImage"

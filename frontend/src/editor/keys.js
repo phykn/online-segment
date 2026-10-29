@@ -2,6 +2,10 @@ import { ERASER_KEY, LABELS, VIEW_KEYS } from '../../config.js'
 
 const wheelKeys = new Set()
 
+const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad)/.test(navigator.platform)
+// The modifier shown for undo, redo and wheel zoom: ⌘ on a Mac, Ctrl elsewhere.
+export const MOD_KEY = isMac ? '⌘' : 'Ctrl'
+
 export const keyAction = (code, key = '') => {
   const label = LABELS.findIndex(({ key }) => code === 'Digit' + key || code === 'Numpad' + key)
   if (label >= 0) return { name: 'label', value: label }
@@ -13,7 +17,8 @@ export const keyAction = (code, key = '') => {
   if (code === 'Key' + VIEW_KEYS.unclear) return { name: 'toggle-unclear' }
   if (code === 'ArrowUp') return { name: 'previous-image' }
   if (code === 'ArrowDown') return { name: 'next-image' }
-  if (key === '+' || code === 'NumpadAdd') {
+  // = is the unshifted + key.
+  if (key === '+' || key === '=' || code === 'NumpadAdd') {
     return { name: 'opacity-up' }
   }
   if (key === '-' || code === 'NumpadSubtract') {
@@ -52,9 +57,9 @@ export const setWheelKey = (code, pressed) => {
 
 export const clearWheelKeys = () => wheelKeys.clear()
 
-// Ctrl + wheel also zooms; trackpad pinches arrive as Ctrl + wheel too.
+// Ctrl or ⌘ + wheel also zooms; trackpad pinches arrive as Ctrl + wheel too.
 export const wheelAction = (event = {}) => {
-  if (event.ctrlKey || wheelKeys.has('Key' + VIEW_KEYS.zoom)) return 'zoom'
+  if (event.ctrlKey || event.metaKey || wheelKeys.has('Key' + VIEW_KEYS.zoom)) return 'zoom'
   if (wheelKeys.has('Key' + VIEW_KEYS.brush)) return 'brush'
   return null
 }

@@ -41,6 +41,7 @@ const requestDownloadAll = () => {
       type="text"
       maxlength="120"
       aria-label="ZIP file name"
+      title="ZIP file name"
       :disabled="busy"
       @keydown.enter.prevent="requestDownloadAll"
     />

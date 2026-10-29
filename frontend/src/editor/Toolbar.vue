@@ -17,25 +17,25 @@ const emit = defineEmits([
 
 <template>
   <section class="editor-toolbar" aria-label="Editor controls">
-    <div class="label-chips" role="group" aria-label="Brush labels">
+    <div class="label-chips" role="group" aria-label="Classes">
       <button
         v-for="label in LABELS"
         :key="label.value"
         class="label-chip"
         type="button"
-        :aria-label="label.name + ' label'"
-        :title="label.name + ' (' + label.key + ')'"
+        :aria-label="'Class ' + label.key + ', ' + label.name.toLowerCase()"
+        :title="'Class ' + label.key + ', ' + label.name.toLowerCase()"
         :aria-pressed="label.value === selectedLabel"
         @click="emit('update:selected-label', label.value)"
       >
         <span class="label-chip__dot" :style="{ backgroundColor: label.color }" aria-hidden="true"></span>
-        {{ label.key }}
+        <kbd class="key-hint">{{ label.key }}</kbd>
       </button>
       <button
         class="label-chip"
         type="button"
         aria-label="Eraser"
-        :title="'Eraser (' + ERASER_KEY + ')'"
+        title="Eraser"
         :aria-pressed="selectedLabel === ERASER_LABEL"
         @click="emit('update:selected-label', ERASER_LABEL)"
       >
@@ -43,7 +43,7 @@ const emit = defineEmits([
           <path d="m7.5 18.5-3-3a2 2 0 0 1 0-2.8l8.2-8.2a2 2 0 0 1 2.8 0l4 4a2 2 0 0 1 0 2.8l-7.2 7.2H7.5Z" />
           <path d="m10 7.2 6.8 6.8M12.3 18.5H21" />
         </svg>
-        {{ ERASER_KEY }}
+        <kbd class="key-hint">{{ ERASER_KEY }}</kbd>
       </button>
     </div>
     <span class="editor-toolbar__divider" aria-hidden="true"></span>
@@ -66,8 +66,8 @@ const emit = defineEmits([
       class="toolbar-icon"
       type="button"
       :disabled="!canClearUnclear"
-      aria-label="Clear labels in unclear areas"
-      title="Clear labels in unclear areas"
+      aria-label="Clear labels in uncertain areas"
+      title="Clear labels in uncertain areas"
       @click="emit('clear-unclear')"
       @pointerenter="emit('preview-unclear', true)"
       @pointerleave="emit('preview-unclear', false)"

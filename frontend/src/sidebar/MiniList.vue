@@ -37,7 +37,7 @@ const emit = defineEmits(['select'])
         :disabled="selectBusy"
         :aria-label="`Select image ${index + 1}: ${image.name}`"
         :aria-pressed="index === selectedIndex"
-        :title="image.name"
+        :title="image.name + (labeledImages.has(image) ? ', labeled' : '')"
         @click="emit('select', index)"
       >
         <span>{{ index + 1 }}</span>

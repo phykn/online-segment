@@ -17,6 +17,8 @@
   --paper: #fff;
   --readout: #000;
   --readout-text: #c9ced4;
+  --readout-muted: #8b939c;
+  --readout-track: #2c3035;
   --danger: #c9372c;
   --control: 32px;
   --radius: 6px;
@@ -120,15 +122,16 @@ button {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 0 6px;
+  padding: 0 5px;
   cursor: pointer;
   border: 0;
   border-radius: var(--radius);
   color: var(--ink);
   background: transparent;
-  font-size: 12px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+}
+
+.label-chip .key-hint {
+  margin: 0;
 }
 
 .label-chip:hover {
@@ -193,7 +196,7 @@ button {
 }
 
 /* Too narrow for one row: the palette becomes two even rows instead of wrapping ragged. */
-@container (max-width: 519px) {
+@container (max-width: 599px) {
   .editor-toolbar {
     display: grid;
     grid-template-columns: repeat(7, auto);
@@ -205,6 +208,13 @@ button {
 
   .editor-toolbar__divider {
     justify-self: center;
+  }
+}
+
+/* Narrower still: classes 1–5 and 6–0 on two rows, the eraser and clear buttons on a third. */
+@container (max-width: 339px) {
+  .editor-toolbar {
+    grid-template-columns: repeat(5, auto);
   }
 }
 
@@ -384,7 +394,7 @@ button {
 .class-ratio__bar {
   display: flex;
   height: 4px;
-  background: #2c3035;
+  background: var(--readout-track);
 }
 
 .class-ratio__bar > span {
@@ -398,6 +408,11 @@ button {
   align-items: center;
   gap: 4px 16px;
   padding: 4px 10px;
+}
+
+.class-ratio__source {
+  flex: 0 0 auto;
+  color: var(--readout-muted);
 }
 
 .class-ratio__list {
@@ -666,7 +681,8 @@ button {
   border-left: 1px solid var(--line);
 }
 
-.sidebar__open {
+.sidebar__open,
+.sidebar__train {
   display: grid;
   width: var(--control);
   height: var(--control);
@@ -680,13 +696,25 @@ button {
   background: var(--paper);
 }
 
-.sidebar__open:hover {
+.sidebar__open:hover,
+.sidebar__train:hover:not(:disabled, .train-button--due) {
   background: var(--wash);
 }
 
-.sidebar__open svg {
+.sidebar__open svg,
+.sidebar__train svg {
   width: 16px;
   height: 16px;
+}
+
+/* On the collapsed tools rail, under the open button. */
+.sidebar__train {
+  margin-top: 8px;
+}
+
+.sidebar__train:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 
 .sidebar__upload-row {
@@ -964,7 +992,9 @@ button {
 .shortcut-help {
   inset: auto auto 48px 12px;
   width: min(300px, calc(100vw - 24px));
+  max-height: calc(100dvh - 60px);
   margin: 0;
+  overflow: auto;
   padding: 8px 12px 12px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1012,6 +1042,12 @@ button {
   padding: 0;
   font-size: 12px;
   list-style: none;
+}
+
+.shortcut-list + .shortcut-list {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 
 .shortcut-list li {
@@ -1076,6 +1112,8 @@ button {
   transform: translateY(-50%);
 }
 
+/* A keycap on an ink fill: the selected class and a Train button waiting for training. */
+.label-chip[aria-pressed="true"] .key-hint,
 .train-button--due:not(:disabled) kbd {
   border-color: rgb(255 255 255 / 30%);
   color: var(--paper);
@@ -1163,6 +1201,15 @@ button {
 .view-row input[type="range"]:disabled {
   cursor: default;
   opacity: 0.4;
+}
+
+/* A hidden layer's slider is muted; moving it shows the layer again. */
+.view-row--hidden input[type="range"]:not(:disabled) {
+  opacity: 0.5;
+}
+
+.slider-row .shortcut-keys {
+  margin-right: 6px;
 }
 
 .switch {
@@ -1281,6 +1328,10 @@ button {
     flex-direction: row;
     align-items: center;
     padding: 0 12px;
+  }
+
+  .sidebar--collapsed .sidebar__train {
+    margin: 0 0 0 8px;
   }
 
   .sidebar--collapsed .sidebar-mini-list {
