@@ -25,9 +25,6 @@ import { canDecodeImage } from './images/decode.js'
 import { filterNewImages } from './images/files.js'
 
 const resizeWidth = ref(IMAGE_WIDTH)
-const originalWidth = ref(null)
-const displayedWidth = computed(() => resizeWidth.value == null ? null
-  : Math.min(resizeWidth.value, originalWidth.value ?? resizeWidth.value))
 const selectedLabel = ref(0)
 const brushSize = ref(BRUSH_SIZE.default)
 const zoom = ref(ZOOM.default)
@@ -64,8 +61,6 @@ const {
   canResetCrop,
   resetCrop,
 } = useImages()
-watch(selectedImage, () => { originalWidth.value = null })
-
 const model = useModel({
   images,
   selectedImage,
@@ -122,6 +117,8 @@ const canTrain = computed(() => labelRevision.value >= 0
 const needsTraining = computed(() => hasLabels.value && !canDownloadResult.value && !predicting.value)
 // The shown prediction already reflects every label, so Train & predict has nothing to do.
 const upToDate = computed(() => canDownloadResult.value && !predicting.value)
+// A prediction that is certain everywhere leaves Uncertain only nothing to paint, so it stays off.
+const hasUncertainArea = computed(() => !!uncertaintyMask.value?.data.includes(1))
 const canClearUnclear = computed(() => !!workspaceRef.value?.hasUnclearLabels
   && !exporting.value && !projectBusy.value && !cropOpen.value)
 
@@ -207,7 +204,7 @@ const openProject = async file => {
 }
 
 const resizeImage = width => {
-  if (exporting.value || projectBusy.value || cropOpen.value || width === displayedWidth.value) return
+  if (exporting.value || projectBusy.value || cropOpen.value || width === resizeWidth.value) return
   resizeWidth.value = width
   model.invalidateFeatures()
   clearErrors()
@@ -256,7 +253,7 @@ const handleShortcut = (event) => {
   } else if (action.name === 'toggle-prediction') {
     if (!event.repeat && resultImage.value) predictionVisible.value = !predictionVisible.value
   } else if (action.name === 'toggle-unclear') {
-    if (!event.repeat && uncertaintyMask.value) unclearOnly.value = !unclearOnly.value
+    if (!event.repeat && hasUncertainArea.value) unclearOnly.value = !unclearOnly.value
   } else if (action.name === 'help') {
     if (!event.repeat) document.getElementById('shortcut-help')?.togglePopover()
   } else if (action.name === 'previous-image') {
@@ -451,12 +448,11 @@ const handleLabelState = (state) => {
         :edits-visible="editsVisible"
         :prediction-opacity="predictionOpacity"
         :edits-opacity="editsOpacity"
-        :unclear-only="unclearOnly"
+        :unclear-only="unclearOnly && hasUncertainArea"
         :preview-unclear-clear="previewUnclear && canClearUnclear"
         :busy="exporting || projectBusy"
         @add-files="addFiles"
         @crop-selection="cropSelection = $event"
-        @image-size="originalWidth = $event.width"
         @label-state-change="handleLabelState"
         @show-edits="editsVisible = true"
         @update:brush-size="brushSize = $event"
@@ -472,10 +468,10 @@ const handleLabelState = (state) => {
       v-model:edits-opacity="editsOpacity"
       v-model:unclear-only="unclearOnly"
       :images="images"
-      :width="displayedWidth"
+      :width="resizeWidth"
       :has-image="!!selectedImage"
       :has-prediction="!!resultImage"
-      :has-unclear="!!uncertaintyMask"
+      :has-unclear="hasUncertainArea"
       :can-reset-crop="canResetCrop"
       :cropping="cropOpen"
       :has-crop-selection="!!cropSelection"

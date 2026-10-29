@@ -110,6 +110,14 @@ export const useModel = ({
     selectedImage.value === request.image &&
     isPredictionFresh(request)
 
+  // Labels painted while a prediction ran leave its result one edit behind. It still shows, as a
+  // prediction does after any later edit, and Train & predict stays due.
+  const isPredictionShowable = (request) =>
+    request.generation === generation &&
+    selectedImage.value === request.image &&
+    images.value.includes(request.image) &&
+    resizeWidth.value === request.width
+
   const runPrediction = async (request) => {
     try {
       const cached = results.get(
@@ -137,9 +145,16 @@ export const useModel = ({
         if (isPredictionCurrent(request)) progress.value = state
       })
       // The model trained even if the user moved to another image, so keep the result for when
-      // they come back; a result for an old width or old labels is dropped.
+      // they come back; a result for an old width or old labels is not kept.
       if (request.generation === generation) enabled.value = true
-      if (!isPredictionFresh(request)) return
+      if (!isPredictionFresh(request)) {
+        if (isPredictionShowable(request)) {
+          result.value = { image: request.image, width: request.width, revision: request.revision,
+            ...makeResult(response) }
+          predictionVersion.value += 1
+        }
+        return
+      }
       const finished = results.set(request.image, request.width, request.revision, makeResult(response))
       if (!isPredictionCurrent(request)) return
       result.value = finished

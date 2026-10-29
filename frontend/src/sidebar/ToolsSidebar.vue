@@ -55,6 +55,9 @@ const trainDisabled = computed(() => props.busy || props.cropping || !props.hasI
   || props.upToDate)
 const trainTitle = computed(() => !props.canTrain ? 'Paint at least two classes first'
   : props.upToDate ? 'Prediction is up to date' : undefined)
+// Says why the panel's button is filled; the rail's icon keeps its name instead.
+const dueTitle = computed(() => props.needsTraining && !trainDisabled.value
+  ? 'Your latest labels are not trained yet' : undefined)
 const views = [
   { name: 'Labels', key: VIEW_KEYS.edits, visible: 'editsVisible', opacity: 'editsOpacity', event: 'edits' },
   { name: 'Prediction', key: VIEW_KEYS.prediction, visible: 'predictionVisible', opacity: 'predictionOpacity', event: 'prediction' },
@@ -149,7 +152,7 @@ const setOpacity = (view, value) => {
       <section class="tool-group" aria-labelledby="model-group">
         <h2 id="model-group">Model</h2>
         <button class="model-button busy-button key-button" :class="{ 'train-button--due': needsTraining }" type="button"
-          :disabled="trainDisabled" :title="trainTitle" @click="emit('train')">
+          :disabled="trainDisabled" :title="trainTitle ?? dueTitle" @click="emit('train')">
           <kbd>Space</kbd>Train &amp; predict<span v-if="predicting" class="spinner" aria-hidden="true"></span>
         </button>
         <p v-if="modelError" class="model-error" role="alert">{{ modelError }}</p>
@@ -177,7 +180,8 @@ const setOpacity = (view, value) => {
       <section class="tool-group" aria-labelledby="reach-group">
         <h2 id="reach-group">Paint</h2>
         <label class="switch"
-          :title="hasUnclear ? 'Brush paints only where the prediction is uncertain; the rest is shaded' : NO_PREDICTION">
+          :title="hasUnclear ? 'Brush paints only where the prediction is uncertain; the rest is shaded'
+            : hasPrediction ? 'This prediction has no uncertain areas' : NO_PREDICTION">
           <input type="checkbox" :checked="unclearOnly && hasUnclear" :disabled="!hasUnclear"
             @change="emit('update:unclear-only', $event.target.checked)" />
           <span class="switch__track" aria-hidden="true"><span></span></span>

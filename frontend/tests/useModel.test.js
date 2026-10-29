@@ -325,7 +325,7 @@ test('does not expose an error from a superseded prediction', async () => {
   }
 })
 
-test('edits during prediction discard the stale response without automatically training again', async () => {
+test('edits during prediction still show its response, marked out of date, without training again', async () => {
   resetSession()
   const browser = installBrowserMocks(), originalFetch = globalThis.fetch
   const first = deferred(), started = deferred(), requests = []
@@ -347,7 +347,8 @@ test('edits during prediction discard the stale response without automatically t
     await Promise.all([running, update])
     assert.equal(requests.length, 1)
     assert.equal(model.predicting.value, false)
-    assert.equal(model.resultImage.value, '')
+    assert.notEqual(model.resultImage.value, '')
+    assert.equal(model.predictionVersion.value, 1)
     assert.equal(model.canDownloadResult.value, false)
     await model.apply()
     assert.equal(requests.length, 2)

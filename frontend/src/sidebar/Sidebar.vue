@@ -59,7 +59,7 @@ const shortcutGroups = [
     { keys: [[ERASER_KEY]], action: 'Eraser' },
     { keys: [['Drag']], action: 'Paint' },
     { keys: [[VIEW_KEYS.brush, 'Wheel'], ['['], [']']], action: 'Brush size' },
-    { keys: [[VIEW_KEYS.unclear]], action: 'Turn Uncertain only on or off' },
+    { keys: [[VIEW_KEYS.unclear]], action: 'Paint only uncertain areas' },
     { keys: [[MOD_KEY, 'Z']], action: 'Undo' },
     { keys: MOD_KEY === 'Ctrl' ? [['Ctrl', 'Shift', 'Z'], ['Ctrl', 'Y']] : [[MOD_KEY, 'Shift', 'Z']], action: 'Redo' },
   ],

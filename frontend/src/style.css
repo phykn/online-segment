@@ -200,14 +200,11 @@ button {
   .editor-toolbar {
     display: grid;
     grid-template-columns: repeat(7, auto);
+    justify-items: center;
   }
 
   .label-chips {
     display: contents;
-  }
-
-  .editor-toolbar__divider {
-    justify-self: center;
   }
 }
 
@@ -725,9 +722,10 @@ button {
   opacity: 0.4;
 }
 
-/* At the foot of the collapsed image rail, where the expanded sidebar keeps its ? button. */
+/* At the foot of the collapsed image rail, where the expanded sidebar keeps its ? button, with or
+   without images above it. */
 .sidebar__help {
-  margin-top: 8px;
+  margin-top: auto;
   font-size: 13px;
   font-weight: 600;
 }
@@ -895,7 +893,7 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  margin: 12px 0 0;
+  margin: 12px 0 8px;
   padding: 0;
   overflow-y: auto;
   list-style: none;
@@ -1352,14 +1350,17 @@ button {
     padding: 0 12px;
   }
 
-  .sidebar--collapsed .sidebar__train,
-  .sidebar--collapsed .sidebar__help {
+  .sidebar--collapsed .sidebar__train {
     margin: 0 0 0 8px;
+  }
+
+  .sidebar--collapsed .sidebar__help {
+    margin: 0 0 0 auto;
   }
 
   .sidebar--collapsed .sidebar-mini-list {
     flex-direction: row;
-    margin: 0 0 0 8px;
+    margin: 0 8px;
     overflow-x: auto;
     overflow-y: hidden;
   }
@@ -1372,5 +1373,10 @@ button {
   .workspace {
     padding-right: 8px;
     padding-left: 8px;
+  }
+
+  /* On a phone the image sits right under the palette, with no empty band to cross between them. */
+  .workspace__editor {
+    grid-template-rows: 0 auto minmax(min-content, 1fr);
   }
 }

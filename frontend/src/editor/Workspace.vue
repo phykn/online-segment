@@ -65,7 +65,6 @@ const props = defineProps({
 const emit = defineEmits([
   'add-files',
   'crop-selection',
-  'image-size',
   'label-state-change',
   'show-edits',
   'update:brush-size',
@@ -305,7 +304,6 @@ watch(
 
       setOriginalImageSize(file, decodedImage.width, decodedImage.height)
       sourceSize.value = { width: decodedImage.width, height: decodedImage.height }
-      if (!props.cropping) emit('image-size', sourceSize.value)
       drawResized(
         decodedImage.source,
         decodedImage.width,
